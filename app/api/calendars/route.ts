@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'family_id query parameter is required' }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('calendar_sources')
       .select('*')
       .eq('family_id', family_id)
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert the calendar source
-    const { data: source, error: insertError } = await supabase
+    const { data: source, error: insertError } = await (supabase as any)
       .from('calendar_sources')
       .insert({
         profile_id,
