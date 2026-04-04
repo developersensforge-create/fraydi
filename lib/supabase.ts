@@ -93,6 +93,18 @@ export type GoogleCalendarToken = {
   updated_at: string
 }
 
+export type CalendarSource = {
+  id: string
+  profile_id: string
+  family_id: string
+  name: string
+  ical_url: string
+  color: string
+  last_synced_at: string | null
+  event_count: number
+  created_at: string
+}
+
 // ---------------------------------------------------------------------------
 // Database schema map (for typed Supabase client)
 // ---------------------------------------------------------------------------
@@ -154,6 +166,14 @@ export type Database = {
           updated_at?: string
         }
         Update: Partial<Omit<GoogleCalendarToken, 'id'>>
+      }
+      calendar_sources: {
+        Row: CalendarSource
+        Insert: Omit<CalendarSource, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        }
+        Update: Partial<Omit<CalendarSource, 'id'>>
       }
     }
   }
