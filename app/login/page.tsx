@@ -1,3 +1,4 @@
+"use client";
 export default function LoginPage() {
   return (
     <main className="min-h-screen bg-white flex items-center justify-center px-6">
