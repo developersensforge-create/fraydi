@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upsert the calendar_source record
-    const { error: sourceError } = await supabase.from('calendar_sources').upsert(
+    const { error: sourceError } = await (supabase as any).from('calendar_sources').upsert(
       {
         profile_id,
         family_id,
