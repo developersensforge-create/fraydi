@@ -45,7 +45,7 @@ export default function FamilyTimeline() {
                 {/* Dot */}
                 <div
                   className="relative z-10 mt-1 h-3 w-3 flex-shrink-0 rounded-full border-2 border-white ring-2"
-                  style={{ backgroundColor: event.color, ringColor: event.color }}
+                  style={{ backgroundColor: event.color }}
                 />
 
                 {/* Event */}
