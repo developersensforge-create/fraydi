@@ -19,10 +19,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch all calendar sources for this family
-    const { data: sources, error: sourcesError } = await supabase
+    const { data: sourcesRaw, error: sourcesError } = await (supabase as any)
       .from('calendar_sources')
       .select('*')
       .eq('family_id', family_id)
+    const sources = sourcesRaw as Array<{ id: string; name: string; ical_url: string; profile_id: string; family_id: string; color: string }>
 
     if (sourcesError) {
       return NextResponse.json({ error: sourcesError.message }, { status: 500 })
