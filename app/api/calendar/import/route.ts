@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
       assignment_confirmed: false,
     }))
 
-    const { error: upsertError } = await supabase
+    const { error: upsertError } = await (supabase as any)
       .from('calendar_events')
       .upsert(rows, { onConflict: 'google_event_id' })
 
