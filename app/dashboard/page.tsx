@@ -1,193 +1,188 @@
-"use client"
+"use client";
+import { useSession, signIn } from "next-auth/react";
+import { useEffect, useState } from "react";
 
-import { useState } from 'react'
-import Navbar from '@/components/Navbar'
-import EventCard, { FamilyEvent } from '@/components/EventCard'
-import CoordinationAlert from '@/components/CoordinationAlert'
-import ShoppingList from '@/components/ShoppingList'
-
-type ViewMode = 'Today' | 'Week' | 'Month'
-
-// TODO: wire to Supabase — fetch from calendar_events joined with family_members
-const MOCK_EVENTS_BY_DAY: Record<string, FamilyEvent[]> = {
-  '2026-04-04': [
-    { id: 'e1', time: '8:00 AM', title: 'School drop-off', memberName: 'Sarah', memberColor: '#f96400', requiresCoverage: false },
-    { id: 'e2', time: '10:00 AM', title: 'Dentist appointment', memberName: 'Emma', memberColor: '#10b981', requiresCoverage: true },
-    { id: 'e3', time: '3:00 PM', title: 'Soccer practice', memberName: 'Lily', memberColor: '#8b5cf6', requiresCoverage: true },
-    { id: 'e4', time: '5:30 PM', title: 'Grocery run', memberName: 'Mike', memberColor: '#3b82f6', requiresCoverage: false },
-    { id: 'e5', time: '7:00 PM', title: 'Family dinner', memberName: 'Everyone', memberColor: '#f59e0b', requiresCoverage: false },
-  ],
-  '2026-04-05': [
-    { id: 'e6', time: '9:00 AM', title: 'Piano lesson', memberName: 'Lily', memberColor: '#8b5cf6', requiresCoverage: false },
-    { id: 'e7', time: '2:00 PM', title: 'Playdate – Emma & Zoe', memberName: 'Emma', memberColor: '#10b981', requiresCoverage: true },
-  ],
-  '2026-04-06': [],
+interface CalendarEvent {
+  id: string;
+  summary: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  colorId?: string;
 }
 
-function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0]
-}
+const COLORS: Record<string, string> = {
+  "1": "#ac725e", "2": "#d06b64", "3": "#f83a22", "4": "#fa573c",
+  "5": "#ff7537", "6": "#ffad46", "7": "#42d692", "8": "#16a765",
+  "9": "#7bd148", "10": "#b3dc6c", "11": "#fbe983", "default": "#f96400",
+};
 
-function displayDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+function formatTime(dt?: string, d?: string) {
+  if (dt) return new Date(dt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (d) return "All day";
+  return "";
 }
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date)
-  d.setDate(d.getDate() + days)
-  return d
-}
-
-const VIEW_MODES: ViewMode[] = ['Today', 'Week', 'Month']
 
 export default function DashboardPage() {
-  const today = new Date('2026-04-04')
-  const [currentDate, setCurrentDate] = useState(today)
-  const [viewMode, setViewMode] = useState<ViewMode>('Today')
+  const { data: session, status } = useSession();
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [view, setView] = useState<"today" | "week">("today");
 
-  const dateKey = formatDate(currentDate)
-  // TODO: wire to Supabase — replace mock with real event fetch
-  const events = MOCK_EVENTS_BY_DAY[dateKey] ?? []
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      signIn("google");
+      return;
+    }
+    if (session?.accessToken) {
+      fetchCalendarEvents(session.accessToken as string);
+    }
+  }, [session, status]);
 
-  const isToday = formatDate(currentDate) === formatDate(today)
+  async function fetchCalendarEvents(accessToken: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const now = new Date();
+      const timeMin = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const timeMax = view === "today"
+        ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString()
+        : new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7).toISOString();
 
-  const navDelta = viewMode === 'Month' ? 30 : viewMode === 'Week' ? 7 : 1
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime&maxResults=50`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError("Session expired. Please sign in again.");
+          signIn("google");
+          return;
+        }
+        setError(`Calendar error: ${res.status}`);
+        return;
+      }
+
+      const data = await res.json();
+      setEvents(data.items || []);
+    } catch (e) {
+      setError("Could not load calendar. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Please sign in to view your calendar</p>
+          <button onClick={() => signIn("google")} className="bg-orange-500 text-white px-6 py-3 rounded-xl font-semibold">
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
+      {/* Header */}
+      <div className="bg-white border-b border-gray-100 px-6 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between max-w-2xl mx-auto">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Fraydi</h1>
+            <p className="text-xs text-gray-400">{today}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {session?.user?.image && (
+              <img src={session.user.image} className="w-8 h-8 rounded-full" alt="avatar" />
+            )}
+            <span className="text-sm text-gray-600">{session?.user?.name?.split(" ")[0]}</span>
+          </div>
+        </div>
+      </div>
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
-        {/* Page header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            {isToday ? 'Good morning 👋' : 'Family Timeline'}
-          </h1>
-          <p className="text-gray-500 mt-1">Here&apos;s what&apos;s happening with your family.</p>
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        {/* View toggle */}
+        <div className="flex gap-2 mb-6">
+          {(["today", "week"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => {
+                setView(v);
+                if (session?.accessToken) fetchCalendarEvents(session.accessToken as string);
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                view === v ? "bg-orange-500 text-white" : "bg-white text-gray-500 border border-gray-200"
+              }`}
+            >
+              {v === "today" ? "Today" : "This Week"}
+            </button>
+          ))}
+          <button
+            onClick={() => session?.accessToken && fetchCalendarEvents(session.accessToken as string)}
+            className="ml-auto px-3 py-2 text-sm text-orange-500 border border-orange-200 rounded-lg"
+          >
+            ↻ Refresh
+          </button>
         </div>
 
-        {/* Desktop layout: sidebar + main + right */}
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left sidebar — view toggle (desktop) / top tabs (mobile) */}
-          <aside className="lg:w-40 flex-shrink-0">
-            {/* Mobile: horizontal tabs */}
-            <div className="flex lg:hidden gap-1 bg-white rounded-xl border border-gray-200 p-1 mb-4">
-              {VIEW_MODES.map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  className={`flex-1 py-1.5 text-sm font-semibold rounded-lg transition-all ${
-                    viewMode === mode
-                      ? 'bg-[#f96400] text-white shadow-sm'
-                      : 'text-gray-500 hover:text-gray-800'
-                  }`}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
+        {/* Calendar Events */}
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-gray-400 text-sm">Loading your calendar...</p>
+          </div>
+        ) : error ? (
+          <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-red-600 text-sm">{error}</div>
+        ) : events.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
+            <div className="text-4xl mb-3">📅</div>
+            <p className="text-gray-500 font-medium">No events {view === "today" ? "today" : "this week"}</p>
+            <p className="text-gray-400 text-sm mt-1">Enjoy the free time!</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {events.map((event) => {
+              const color = COLORS[event.colorId ?? "default"] ?? COLORS["default"];
+              const startTime = formatTime(event.start.dateTime, event.start.date);
+              const endTime = formatTime(event.end.dateTime, event.end.date);
+              const isAllDay = !event.start.dateTime;
+              const eventDate = event.start.dateTime
+                ? new Date(event.start.dateTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+                : event.start.date;
 
-            {/* Desktop: vertical tabs */}
-            <div className="hidden lg:flex flex-col gap-1 bg-white rounded-xl border border-gray-200 p-2 sticky top-6">
-              {VIEW_MODES.map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  className={`w-full py-2 px-3 text-sm font-semibold rounded-lg text-left transition-all ${
-                    viewMode === mode
-                      ? 'bg-[#f96400] text-white shadow-sm'
-                      : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          {/* Main — Family Timeline */}
-          <section className="flex-1 min-w-0">
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-              {/* Date header with navigation */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <button
-                  onClick={() => setCurrentDate((d) => addDays(d, -navDelta))}
-                  className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors text-lg"
-                  aria-label="Previous"
-                >
-                  ‹
-                </button>
-
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-gray-900">{displayDate(currentDate)}</p>
-                  {isToday && (
-                    <span className="text-xs text-[#f96400] font-medium">Today</span>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => setCurrentDate((d) => addDays(d, navDelta))}
-                  className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors text-lg"
-                  aria-label="Next"
-                >
-                  ›
-                </button>
-              </div>
-
-              {/* Event count badge */}
-              {events.length > 0 && (
-                <div className="px-5 py-2 border-b border-gray-100 flex items-center justify-between">
-                  <span className="text-xs text-gray-400">
-                    {events.length} event{events.length !== 1 ? 's' : ''}
-                  </span>
-                  {events.some((e) => e.requiresCoverage) && (
-                    <span className="text-xs font-medium text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">
-                      ⚠️ {events.filter((e) => e.requiresCoverage).length} need coverage
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Timeline */}
-              <div className="px-5 py-4">
-                {events.length === 0 ? (
-                  <div className="py-12 text-center">
-                    <p className="text-4xl mb-3">📅</p>
-                    <p className="text-sm font-semibold text-gray-700">No events today</p>
-                    <p className="text-xs text-gray-400 mt-1">Add a calendar to get started</p>
+              return (
+                <div key={event.id} className="bg-white rounded-xl border border-gray-100 p-4 flex gap-3 shadow-sm">
+                  <div className="w-1 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 truncate">{event.summary || "(No title)"}</p>
+                    <p className="text-sm text-gray-400 mt-0.5">
+                      {view === "week" && <span className="mr-2">{eventDate}</span>}
+                      {isAllDay ? "All day" : `${startTime} – ${endTime}`}
+                    </p>
                   </div>
-                ) : (
-                  <div className="relative">
-                    {/* Timeline line */}
-                    <div className="absolute left-[4.75rem] top-2 bottom-2 w-px bg-gray-100" />
-                    <div className="divide-y divide-gray-50">
-                      {events.map((event) => (
-                        <EventCard key={event.id} event={event} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Placeholder notice */}
-              <div className="mx-5 mb-5 rounded-lg bg-gray-50 border border-dashed border-gray-200 px-4 py-3 text-center">
-                <p className="text-xs text-gray-400">
-                  {/* TODO: wire to Supabase + Google Calendar */}
-                  🗓 Mock data shown · Connect calendars to see real events
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Right panel */}
-          <aside className="lg:w-72 flex-shrink-0 flex flex-col gap-6">
-            {/* TODO: wire to Supabase — coordination_assignments where status = 'pending' */}
-            <CoordinationAlert />
-            {/* TODO: wire to Supabase — shopping_list table with real-time subscription */}
-            <ShoppingList />
-          </aside>
-        </div>
-      </main>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
-  )
+  );
 }
