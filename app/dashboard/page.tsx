@@ -290,6 +290,12 @@ export default function DashboardPage() {
 
   const handleDaySelect = (day: Date) => {
     setSelectedDate(day);
+    // Show cached events immediately if available
+    try {
+      const cacheKey = `fraydi_events_${day.toDateString()}_${view}`;
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) setEvents(JSON.parse(cached));
+    } catch(e) {}
     if (session?.accessToken) fetchCalendarEvents(session.accessToken as string, day);
   };
 
@@ -308,7 +314,7 @@ export default function DashboardPage() {
   }, [session, status]);
 
   async function fetchCalendarEvents(accessToken: string, date?: Date) {
-    setLoading(true);
+    setLoading(true); // keep existing events visible while loading
     setError("");
     try {
       const d = date || selectedDate;
@@ -333,7 +339,13 @@ export default function DashboardPage() {
       }
 
       const data = await res.json();
-      setEvents(data.items || []);
+      const items = data.items || [];
+      setEvents(items);
+      // Cache in sessionStorage for instant repeat loads
+      try {
+        const cacheKey = `fraydi_events_${(date || selectedDate).toDateString()}_${view}`;
+        sessionStorage.setItem(cacheKey, JSON.stringify(items));
+      } catch(e) {}
     } catch {
       setError("Could not load calendar. Please try again.");
     } finally {
