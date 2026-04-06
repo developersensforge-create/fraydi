@@ -1,7 +1,12 @@
+'use client'
+
 import Link from 'next/link'
+import { useSession, signOut } from 'next-auth/react'
 import { Button } from '@/components/ui/Button'
 
 export default function Navbar() {
+  const { data: session, status } = useSession()
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/80 backdrop-blur-md">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -25,15 +30,34 @@ export default function Navbar() {
 
         {/* CTA */}
         <div className="flex items-center gap-3">
-          <Link
-            href="/login"
-            className="hidden sm:block text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            Sign In
-          </Link>
-          <Link href="/login">
-            <Button size="sm" className="text-sm">Get Started</Button>
-          </Link>
+          {status === 'loading' ? (
+            <span className="text-sm text-gray-400">Loading...</span>
+          ) : session ? (
+            <>
+              <span className="hidden sm:block text-sm text-gray-500 truncate max-w-[160px]">
+                {session.user?.name ?? session.user?.email}
+              </span>
+              <Button
+                size="sm"
+                className="text-sm"
+                onClick={() => signOut({ callbackUrl: '/' })}
+              >
+                Sign Out
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="hidden sm:block text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link href="/login">
+                <Button size="sm" className="text-sm">Get Started</Button>
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>

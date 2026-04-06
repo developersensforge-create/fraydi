@@ -54,23 +54,30 @@ export default function DashboardPage() {
   const [events, setEvents] = useState<FamilyEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [synced, setSynced] = useState(false)
-  const { data: session } = useSession()
+  const [needsReauth, setNeedsReauth] = useState(false)
+  const { data: session, status } = useSession()
 
   useEffect(() => {
+    if (status === 'loading') return
     if (!session) return
     setLoading(true)
     setSynced(false)
+    setNeedsReauth(false)
     fetch('/api/calendar/events')
       .then(r => r.json())
       .then(data => {
+        if (data.needsReauth) {
+          setNeedsReauth(true)
+          return
+        }
         if (data.events) {
           setEvents(data.events.map(toFamilyEvent))
           setSynced(true)
         }
       })
-      .catch(() => {}) // silently fail — show empty state
+      .catch(() => {})
       .finally(() => setLoading(false))
-  }, [session, currentDate])
+  }, [session, status, currentDate])
 
   const isToday = formatDate(currentDate) === formatDate(today)
   const navDelta = viewMode === 'Month' ? 30 : viewMode === 'Week' ? 7 : 1
@@ -181,14 +188,25 @@ export default function DashboardPage() {
                 ) : !session ? (
                   <div className="py-12 text-center">
                     <p className="text-4xl mb-3">📅</p>
-                    <p className="text-sm font-semibold text-gray-700">No Google Calendar connected</p>
-                    <p className="text-xs text-gray-400 mt-1">Sign in with Google to see your real events</p>
+                    <p className="text-sm font-semibold text-gray-700">Sign in to see your calendar</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      <a href="/login" className="text-[#f96400] font-medium underline">Sign in with Google</a>
+                    </p>
+                  </div>
+                ) : needsReauth ? (
+                  <div className="py-12 text-center">
+                    <p className="text-4xl mb-3">🔑</p>
+                    <p className="text-sm font-semibold text-gray-700">Calendar permission needed</p>
+                    <p className="text-xs text-gray-400 mt-1 mb-3">Please sign out and sign back in to grant calendar access</p>
+                    <a href="/api/auth/signout" className="inline-block px-4 py-2 bg-[#f96400] text-white text-xs font-semibold rounded-lg">
+                      Sign out &amp; reconnect
+                    </a>
                   </div>
                 ) : events.length === 0 ? (
                   <div className="py-12 text-center">
                     <p className="text-4xl mb-3">📅</p>
                     <p className="text-sm font-semibold text-gray-700">No events today</p>
-                    <p className="text-xs text-gray-400 mt-1">Your Google Calendar is connected but nothing is scheduled</p>
+                    <p className="text-xs text-gray-400 mt-1">Your Google Calendar is connected but nothing is scheduled for today</p>
                   </div>
                 ) : (
                   <div className="relative">
