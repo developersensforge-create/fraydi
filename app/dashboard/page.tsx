@@ -75,32 +75,6 @@ function Sidebar({ userName, userImage }: { userName?: string | null; userImage?
   ];
 
 
-  // ── Week strip helpers ──────────────────────────────────────
-  const getWeekDays = () => {
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(today.getDate() - today.getDay() + 1 + weekOffset * 7); // Mon
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      return d;
-    });
-  };
-
-  const isSameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
-
-  const isToday = (d: Date) => isSameDay(d, new Date());
-
-  const handleDaySelect = (day: Date) => {
-    setSelectedDate(day);
-    if (session?.accessToken) fetchCalendarEvents(session.accessToken as string, day);
-  };
-
-  const weekDays = getWeekDays();
-  const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   return (
     <aside
@@ -294,6 +268,33 @@ export default function DashboardPage() {
   const [view, setView] = useState<"today" | "week">("today");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [weekOffset, setWeekOffset] = useState(0);
+
+  // ── Week strip helpers ──────────────────────────────────────
+  const getWeekDays = () => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() - today.getDay() + 1 + weekOffset * 7); // Mon
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return d;
+    });
+  };
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const isToday = (d: Date) => isSameDay(d, new Date());
+
+  const handleDaySelect = (day: Date) => {
+    setSelectedDate(day);
+    if (session?.accessToken) fetchCalendarEvents(session.accessToken as string, day);
+  };
+
+  const weekDays = getWeekDays();
+  const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   useEffect(() => {
     if (status === "unauthenticated") {
