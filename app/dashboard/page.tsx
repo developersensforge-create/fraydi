@@ -74,6 +74,34 @@ function Sidebar({ userName, userImage }: { userName?: string | null; userImage?
     )},
   ];
 
+
+  // ── Week strip helpers ──────────────────────────────────────
+  const getWeekDays = () => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() - today.getDay() + 1 + weekOffset * 7); // Mon
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return d;
+    });
+  };
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const isToday = (d: Date) => isSameDay(d, new Date());
+
+  const handleDaySelect = (day: Date) => {
+    setSelectedDate(day);
+    if (session?.accessToken) fetchCalendarEvents(session.accessToken as string, day);
+  };
+
+  const weekDays = getWeekDays();
+  const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
   return (
     <aside
       className="fixed left-0 top-0 h-full z-20 flex flex-col"
@@ -264,6 +292,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [view, setView] = useState<"today" | "week">("today");
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [weekOffset, setWeekOffset] = useState(0);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -276,15 +306,15 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, status]);
 
-  async function fetchCalendarEvents(accessToken: string) {
+  async function fetchCalendarEvents(accessToken: string, date?: Date) {
     setLoading(true);
     setError("");
     try {
-      const now = new Date();
-      const timeMin = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const d = date || selectedDate;
+      const timeMin = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
       const timeMax = view === "today"
-        ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString()
-        : new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7).toISOString();
+        ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).toISOString()
+        : new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7).toISOString();
 
       const res = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime&maxResults=50`,
@@ -402,7 +432,44 @@ export default function DashboardPage() {
 
           {/* Events */}
           <main className="flex-1 px-6 py-5 overflow-y-auto">
-            {loading ? (
+            
+            {/* Week strip navigation */}
+            <div className="mb-4 bg-white rounded-xl border border-gray-100 shadow-sm p-3">
+              <div className="flex items-center justify-between mb-2">
+                <button
+                  onClick={() => setWeekOffset(w => w - 1)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition"
+                >‹</button>
+                <button
+                  onClick={() => { setWeekOffset(0); handleDaySelect(new Date()); }}
+                  className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition"
+                >Today</button>
+                <button
+                  onClick={() => setWeekOffset(w => w + 1)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition"
+                >›</button>
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {weekDays.map((day, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleDaySelect(day)}
+                    className={`flex flex-col items-center py-2 px-1 rounded-lg transition ${
+                      isSameDay(day, selectedDate)
+                        ? "bg-orange-500 text-white"
+                        : isToday(day)
+                        ? "border border-orange-500 text-orange-500"
+                        : "text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className="text-xs font-medium">{DAY_NAMES[i]}</span>
+                    <span className="text-sm font-bold mt-0.5">{day.getDate()}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+{loading ? (
               <div className="space-y-3">
                 <SkeletonCard />
                 <SkeletonCard />
