@@ -1,4 +1,6 @@
+"use client"
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 const features = [
   {
@@ -24,17 +26,28 @@ const features = [
 ];
 
 export default function HomePage() {
+  const { data: session } = useSession()
+
   return (
     <main className="min-h-screen bg-white text-gray-900">
       {/* Navbar */}
       <nav className="sticky top-0 z-50 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
         <span className="text-2xl font-bold text-orange-500">Fraydi</span>
-        <Link
-          href="/login"
-          className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 transition"
-        >
-          Sign In
-        </Link>
+        {session ? (
+          <Link
+            href="/dashboard"
+            className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 transition"
+          >
+            Go to Dashboard
+          </Link>
+        ) : (
+          <Link
+            href="/login"
+            className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 transition"
+          >
+            Sign In
+          </Link>
+        )}
       </nav>
 
       {/* Hero */}

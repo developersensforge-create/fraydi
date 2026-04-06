@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import EventCard, { FamilyEvent } from '@/components/EventCard'
 import CoordinationAlert from '@/components/CoordinationAlert'
@@ -49,6 +50,7 @@ const VIEW_MODES: ViewMode[] = ['Today', 'Week', 'Month']
 
 export default function DashboardPage() {
   const today = new Date()
+  const router = useRouter()
   const [currentDate, setCurrentDate] = useState(today)
   const [viewMode, setViewMode] = useState<ViewMode>('Today')
   const [events, setEvents] = useState<FamilyEvent[]>([])
@@ -56,6 +58,13 @@ export default function DashboardPage() {
   const [synced, setSynced] = useState(false)
   const [needsReauth, setNeedsReauth] = useState(false)
   const { data: session, status } = useSession()
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login')
+    }
+  }, [status, router])
 
   useEffect(() => {
     if (status === 'loading') return
@@ -198,9 +207,12 @@ export default function DashboardPage() {
                     <p className="text-4xl mb-3">🔑</p>
                     <p className="text-sm font-semibold text-gray-700">Calendar permission needed</p>
                     <p className="text-xs text-gray-400 mt-1 mb-3">Please sign out and sign back in to grant calendar access</p>
-                    <a href="/api/auth/signout" className="inline-block px-4 py-2 bg-[#f96400] text-white text-xs font-semibold rounded-lg">
+                    <button
+                      onClick={() => signOut({ callbackUrl: '/login' })}
+                      className="inline-block px-4 py-2 bg-[#f96400] text-white text-xs font-semibold rounded-lg hover:bg-orange-600 transition"
+                    >
                       Sign out &amp; reconnect
-                    </a>
+                    </button>
                   </div>
                 ) : events.length === 0 ? (
                   <div className="py-12 text-center">
