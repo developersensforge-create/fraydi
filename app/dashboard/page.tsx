@@ -72,7 +72,9 @@ export default function DashboardPage() {
     setLoading(true)
     setSynced(false)
     setNeedsReauth(false)
-    fetch('/api/calendar/events')
+    // Pass client's local date to avoid UTC timezone mismatch on the server
+    const localDate = formatDate(currentDate)
+    fetch(`/api/calendar/events?date=${localDate}`)
       .then(r => r.json())
       .then(data => {
         if (data.needsReauth) {

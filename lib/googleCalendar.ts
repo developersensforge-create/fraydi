@@ -7,15 +7,30 @@ export type CalendarEvent = {
   htmlLink?: string
 }
 
-export async function getTodayEvents(
+/**
+ * Fetch events for a specific date (YYYY-MM-DD).
+ * If no date is provided, falls back to today in UTC (avoid this — always pass date from client).
+ */
+export async function getEventsForDate(
   accessToken: string,
+  dateStr?: string,
   calendarId = 'primary'
 ): Promise<CalendarEvent[]> {
-  const now = new Date()
-  const startOfDay = new Date(now)
-  startOfDay.setHours(0, 0, 0, 0)
-  const endOfDay = new Date(now)
-  endOfDay.setHours(23, 59, 59, 999)
+  let startOfDay: Date
+  let endOfDay: Date
+
+  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    // Parse the client-provided date as local midnight → use T00:00:00 and T23:59:59 in that date string directly
+    startOfDay = new Date(`${dateStr}T00:00:00`)
+    endOfDay = new Date(`${dateStr}T23:59:59`)
+  } else {
+    // Fallback: server UTC date
+    const now = new Date()
+    startOfDay = new Date(now)
+    startOfDay.setHours(0, 0, 0, 0)
+    endOfDay = new Date(now)
+    endOfDay.setHours(23, 59, 59, 999)
+  }
 
   const params = new URLSearchParams({
     timeMin: startOfDay.toISOString(),
@@ -30,12 +45,20 @@ export async function getTodayEvents(
   )
 
   if (!res.ok) {
-    console.error('[googleCalendar] getTodayEvents failed:', res.status, await res.text())
+    console.error('[googleCalendar] getEventsForDate failed:', res.status, await res.text())
     return []
   }
 
   const data = await res.json()
   return (data.items ?? []) as CalendarEvent[]
+}
+
+// Keep backward-compat alias
+export async function getTodayEvents(
+  accessToken: string,
+  calendarId = 'primary'
+): Promise<CalendarEvent[]> {
+  return getEventsForDate(accessToken, undefined, calendarId)
 }
 
 export async function listCalendars(accessToken: string) {

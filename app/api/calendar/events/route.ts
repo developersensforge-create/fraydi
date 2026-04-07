@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/authOptions";
-import { getTodayEvents } from "@/lib/googleCalendar";
+import { getEventsForDate } from "@/lib/googleCalendar";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -11,12 +11,14 @@ export async function GET(req: NextRequest) {
   }
 
   if (!session.accessToken) {
-    // Logged in but no calendar token — likely old session before scope was added
     return NextResponse.json({ error: "No calendar access token. Please sign out and sign in again.", events: [], needsReauth: true }, { status: 403 });
   }
 
+  // Client passes its local date as ?date=YYYY-MM-DD to avoid UTC timezone mismatch
+  const dateParam = req.nextUrl.searchParams.get('date');
+
   try {
-    const events = await getTodayEvents(session.accessToken);
+    const events = await getEventsForDate(session.accessToken, dateParam ?? undefined);
     return NextResponse.json({ events });
   } catch (err) {
     console.error('[calendar/events] Error fetching events:', err);
