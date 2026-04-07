@@ -5,21 +5,30 @@ export type CalendarEvent = {
   end: { dateTime?: string; date?: string; timeZone?: string }
   attendees?: Array<{ email: string; displayName?: string }>
   htmlLink?: string
+  calendarId?: string
 }
 
-export async function getTodayEvents(
-  accessToken: string,
-  calendarId = 'primary'
-): Promise<CalendarEvent[]> {
-  const now = new Date()
-  const startOfDay = new Date(now)
-  startOfDay.setHours(0, 0, 0, 0)
-  const endOfDay = new Date(now)
-  endOfDay.setHours(23, 59, 59, 999)
+export async function listCalendars(accessToken: string): Promise<Array<{ id: string; summary: string; primary?: boolean }>> {
+  const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.items ?? []
+}
 
+/**
+ * Fetch events from a single calendar for a given date range.
+ */
+export async function getEventsForCalendar(
+  accessToken: string,
+  calendarId: string,
+  timeMin: string,
+  timeMax: string
+): Promise<CalendarEvent[]> {
   const params = new URLSearchParams({
-    timeMin: startOfDay.toISOString(),
-    timeMax: endOfDay.toISOString(),
+    timeMin,
+    timeMax,
     singleEvents: 'true',
     orderBy: 'startTime',
   })
@@ -30,21 +39,75 @@ export async function getTodayEvents(
   )
 
   if (!res.ok) {
-    console.error('[googleCalendar] getTodayEvents failed:', res.status, await res.text())
+    console.error(`[googleCalendar] getEventsForCalendar(${calendarId}) failed:`, res.status)
     return []
   }
 
   const data = await res.json()
-  return (data.items ?? []) as CalendarEvent[]
+  return ((data.items ?? []) as CalendarEvent[]).map((e) => ({ ...e, calendarId }))
 }
 
-export async function listCalendars(accessToken: string) {
-  const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-    headers: { Authorization: `Bearer ${accessToken}` },
+/**
+ * Fetch ALL calendars' events for a date, merged and deduplicated by event ID.
+ */
+export async function getEventsForDate(
+  accessToken: string,
+  date: Date
+): Promise<CalendarEvent[]> {
+  const timeMin = new Date(date)
+  timeMin.setHours(0, 0, 0, 0)
+  const timeMax = new Date(date)
+  timeMax.setHours(23, 59, 59, 999)
+
+  const calendars = await listCalendars(accessToken)
+  if (!calendars.length) {
+    // Fallback to primary
+    return getEventsForCalendar(accessToken, 'primary', timeMin.toISOString(), timeMax.toISOString())
+  }
+
+  const allResults = await Promise.all(
+    calendars.map((cal) =>
+      getEventsForCalendar(accessToken, cal.id, timeMin.toISOString(), timeMax.toISOString())
+    )
+  )
+
+  // Flatten, deduplicate by event ID, sort by start time
+  const seen = new Set<string>()
+  const merged: CalendarEvent[] = []
+  for (const events of allResults) {
+    for (const event of events) {
+      if (!seen.has(event.id)) {
+        seen.add(event.id)
+        merged.push(event)
+      }
+    }
+  }
+
+  merged.sort((a, b) => {
+    const aTime = a.start.dateTime ?? a.start.date ?? ''
+    const bTime = b.start.dateTime ?? b.start.date ?? ''
+    return aTime < bTime ? -1 : aTime > bTime ? 1 : 0
   })
-  if (!res.ok) return []
-  const data = await res.json()
-  return data.items ?? []
+
+  return merged
+}
+
+/**
+ * Legacy: fetch today's events. Uses multi-calendar if no calendarId specified.
+ */
+export async function getTodayEvents(
+  accessToken: string,
+  calendarId?: string
+): Promise<CalendarEvent[]> {
+  const now = new Date()
+  if (calendarId) {
+    const timeMin = new Date(now)
+    timeMin.setHours(0, 0, 0, 0)
+    const timeMax = new Date(now)
+    timeMax.setHours(23, 59, 59, 999)
+    return getEventsForCalendar(accessToken, calendarId, timeMin.toISOString(), timeMax.toISOString())
+  }
+  return getEventsForDate(accessToken, now)
 }
 
 export async function createEvent(
