@@ -105,6 +105,48 @@ export type CalendarSource = {
   created_at: string
 }
 
+export type WatchSource = {
+  id: string
+  family_id: string
+  profile_id: string | null
+  name: string
+  type: 'ical_url' | 'manual'
+  url: string | null
+  color: string
+  active: boolean
+  last_synced_at: string | null
+  created_at: string
+}
+
+export type WatchEvent = {
+  id: string
+  family_id: string
+  source_id: string | null
+  title: string
+  description: string | null
+  start_time: string | null
+  end_time: string | null
+  location: string | null
+  url: string | null
+  interest_level: 'watch' | 'interested' | 'hot'
+  dismissed: boolean
+  created_at: string
+}
+
+export type Routine = {
+  id: string
+  family_id: string
+  assigned_to: string | null
+  title: string
+  description: string | null
+  recurrence: 'daily' | 'weekly' | 'monthly'
+  days_of_week: number[]
+  time_of_day: string | null
+  reminder_minutes_before: number
+  active: boolean
+  created_at: string
+}
+
 // ---------------------------------------------------------------------------
 // Database schema map (for typed Supabase client)
 // ---------------------------------------------------------------------------

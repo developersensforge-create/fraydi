@@ -10,7 +10,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not authenticated", events: [] }, { status: 401 });
   }
 
-  // Token refresh failed — user must re-auth
   if (session.error === "RefreshAccessTokenError") {
     return NextResponse.json({
       error: "Session expired. Please sign out and sign in again.",
@@ -33,7 +32,6 @@ export async function GET(req: NextRequest) {
   const result = await getEventsForDate(session.accessToken, dateParam, tzParam);
 
   if ('error' in result) {
-    // Token expired at Google API level — prompt re-auth
     if (result.status === 401) {
       return NextResponse.json({
         error: "Google Calendar token expired. Please sign out and sign in again.",
