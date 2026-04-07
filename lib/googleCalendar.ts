@@ -53,7 +53,7 @@ export async function getEventsForDate(
   dateStr?: string,
   tz?: string,
   calendarId = 'primary'
-): Promise<CalendarEvent[]> {
+): Promise<CalendarEvent[] | { error: string; status: number }> {
   let start: Date, end: Date
 
   if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) && tz) {
@@ -83,8 +83,9 @@ export async function getEventsForDate(
   )
 
   if (!res.ok) {
-    console.error('[googleCalendar] getEventsForDate failed:', res.status, await res.text())
-    return []
+    const body = await res.text()
+    console.error('[googleCalendar] getEventsForDate failed:', res.status, body)
+    return { error: `Google API error ${res.status}`, status: res.status }
   }
 
   const data = await res.json()
@@ -95,7 +96,7 @@ export async function getEventsForDate(
 export async function getTodayEvents(
   accessToken: string,
   calendarId = 'primary'
-): Promise<CalendarEvent[]> {
+): Promise<CalendarEvent[] | { error: string; status: number }> {
   return getEventsForDate(accessToken, undefined, undefined, calendarId)
 }
 

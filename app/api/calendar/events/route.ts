@@ -10,6 +10,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not authenticated", events: [] }, { status: 401 });
   }
 
+  // Token refresh failed — user must re-auth
+  if (session.error === "RefreshAccessTokenError") {
+    return NextResponse.json({
+      error: "Session expired. Please sign out and sign in again.",
+      events: [],
+      needsReauth: true,
+    }, { status: 403 });
+  }
+
   if (!session.accessToken) {
     return NextResponse.json({
       error: "No calendar access token. Please sign out and sign in again.",
@@ -18,15 +27,22 @@ export async function GET(req: NextRequest) {
     }, { status: 403 });
   }
 
-  // Client sends local date (YYYY-MM-DD) and IANA timezone (e.g. "America/New_York")
   const dateParam = req.nextUrl.searchParams.get('date') ?? undefined;
   const tzParam = req.nextUrl.searchParams.get('tz') ?? undefined;
 
-  try {
-    const events = await getEventsForDate(session.accessToken, dateParam, tzParam);
-    return NextResponse.json({ events });
-  } catch (err) {
-    console.error('[calendar/events] Error fetching events:', err);
-    return NextResponse.json({ error: "Failed to fetch events", events: [] }, { status: 500 });
+  const result = await getEventsForDate(session.accessToken, dateParam, tzParam);
+
+  if ('error' in result) {
+    // Token expired at Google API level — prompt re-auth
+    if (result.status === 401) {
+      return NextResponse.json({
+        error: "Google Calendar token expired. Please sign out and sign in again.",
+        events: [],
+        needsReauth: true,
+      }, { status: 403 });
+    }
+    return NextResponse.json({ error: result.error, events: [] }, { status: 500 });
   }
+
+  return NextResponse.json({ events: result });
 }
