@@ -11,14 +11,19 @@ export async function GET(req: NextRequest) {
   }
 
   if (!session.accessToken) {
-    return NextResponse.json({ error: "No calendar access token. Please sign out and sign in again.", events: [], needsReauth: true }, { status: 403 });
+    return NextResponse.json({
+      error: "No calendar access token. Please sign out and sign in again.",
+      events: [],
+      needsReauth: true,
+    }, { status: 403 });
   }
 
-  // Client passes its local date as ?date=YYYY-MM-DD to avoid UTC timezone mismatch
-  const dateParam = req.nextUrl.searchParams.get('date');
+  // Client sends local date (YYYY-MM-DD) and IANA timezone (e.g. "America/New_York")
+  const dateParam = req.nextUrl.searchParams.get('date') ?? undefined;
+  const tzParam = req.nextUrl.searchParams.get('tz') ?? undefined;
 
   try {
-    const events = await getEventsForDate(session.accessToken, dateParam ?? undefined);
+    const events = await getEventsForDate(session.accessToken, dateParam, tzParam);
     return NextResponse.json({ events });
   } catch (err) {
     console.error('[calendar/events] Error fetching events:', err);

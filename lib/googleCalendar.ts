@@ -8,33 +8,71 @@ export type CalendarEvent = {
 }
 
 /**
- * Fetch events for a specific date (YYYY-MM-DD).
- * If no date is provided, falls back to today in UTC (avoid this — always pass date from client).
+ * Compute the UTC start/end of a calendar day in a given IANA timezone.
+ * e.g. "2026-04-06" in "America/New_York" → [2026-04-06T04:00:00Z, 2026-04-07T03:59:59.999Z]
+ */
+function getDayBoundsInTz(dateStr: string, tz: string): { start: Date; end: Date } {
+  try {
+    // Use noon UTC on that date as a stable anchor (avoids DST-transition edge cases at midnight)
+    const noon = new Date(`${dateStr}T12:00:00Z`)
+
+    // Format noon UTC as a local time string in the target timezone
+    const tzStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).format(noon) // → "2026-04-06, 08:00:00" (UTC-4) or "2026-04-06 08:00:00"
+
+    // Parse back as UTC to compute the offset
+    const noonLocalAsUTC = new Date(tzStr.replace(', ', 'T').replace(' ', 'T') + 'Z')
+    const offsetMs = noon.getTime() - noonLocalAsUTC.getTime()
+    // e.g. UTC-4: noon(UTC) - noon(local parsed as UTC) = 12:00Z - 08:00Z = +4h
+
+    // Apply offset to midnight UTC → get midnight in the target timezone
+    const midnight = new Date(`${dateStr}T00:00:00Z`)
+    const start = new Date(midnight.getTime() + offsetMs)
+    const end = new Date(start.getTime() + 86_400_000 - 1) // start + 24h - 1ms
+    return { start, end }
+  } catch {
+    // Fallback: treat as UTC
+    return {
+      start: new Date(`${dateStr}T00:00:00Z`),
+      end: new Date(`${dateStr}T23:59:59.999Z`),
+    }
+  }
+}
+
+/**
+ * Fetch events for a specific date (YYYY-MM-DD) in the user's IANA timezone.
+ * Pass both `dateStr` and `tz` from the client so the server always uses
+ * the user's device timezone regardless of where the server runs.
  */
 export async function getEventsForDate(
   accessToken: string,
   dateStr?: string,
+  tz?: string,
   calendarId = 'primary'
 ): Promise<CalendarEvent[]> {
-  let startOfDay: Date
-  let endOfDay: Date
+  let start: Date, end: Date
 
-  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    // Parse the client-provided date as local midnight → use T00:00:00 and T23:59:59 in that date string directly
-    startOfDay = new Date(`${dateStr}T00:00:00`)
-    endOfDay = new Date(`${dateStr}T23:59:59`)
+  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) && tz) {
+    ;({ start, end } = getDayBoundsInTz(dateStr, tz))
+  } else if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    // Date but no tz — treat as UTC
+    start = new Date(`${dateStr}T00:00:00Z`)
+    end = new Date(`${dateStr}T23:59:59.999Z`)
   } else {
-    // Fallback: server UTC date
+    // No date — use current UTC day as last resort
     const now = new Date()
-    startOfDay = new Date(now)
-    startOfDay.setHours(0, 0, 0, 0)
-    endOfDay = new Date(now)
-    endOfDay.setHours(23, 59, 59, 999)
+    const today = now.toISOString().split('T')[0]
+    start = new Date(`${today}T00:00:00Z`)
+    end = new Date(`${today}T23:59:59.999Z`)
   }
 
   const params = new URLSearchParams({
-    timeMin: startOfDay.toISOString(),
-    timeMax: endOfDay.toISOString(),
+    timeMin: start.toISOString(),
+    timeMax: end.toISOString(),
     singleEvents: 'true',
     orderBy: 'startTime',
   })
@@ -53,12 +91,12 @@ export async function getEventsForDate(
   return (data.items ?? []) as CalendarEvent[]
 }
 
-// Keep backward-compat alias
+// Backward-compat
 export async function getTodayEvents(
   accessToken: string,
   calendarId = 'primary'
 ): Promise<CalendarEvent[]> {
-  return getEventsForDate(accessToken, undefined, calendarId)
+  return getEventsForDate(accessToken, undefined, undefined, calendarId)
 }
 
 export async function listCalendars(accessToken: string) {

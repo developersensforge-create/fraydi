@@ -72,9 +72,10 @@ export default function DashboardPage() {
     setLoading(true)
     setSynced(false)
     setNeedsReauth(false)
-    // Pass client's local date to avoid UTC timezone mismatch on the server
+    // Pass client's local date + IANA timezone so the server always uses the device's timezone
     const localDate = formatDate(currentDate)
-    fetch(`/api/calendar/events?date=${localDate}`)
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    fetch(`/api/calendar/events?date=${localDate}&tz=${encodeURIComponent(tz)}`)
       .then(r => r.json())
       .then(data => {
         if (data.needsReauth) {
