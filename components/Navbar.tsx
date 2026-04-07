@@ -37,6 +37,12 @@ export default function Navbar() {
               >
                 Watch List
               </Link>
+              <Link
+                href="/calendars"
+                className="px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+              >
+                Calendars
+              </Link>
             </nav>
 
             <div className="flex items-center gap-3">
