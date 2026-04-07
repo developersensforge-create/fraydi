@@ -76,7 +76,7 @@ export default function CalendarsPage() {
 
   const handleAddCalendar = async () => {
     if (!newName.trim() || !newUrl.trim()) {
-      showStatus('error', 'Please enter a calendar name and iCal URL.')
+      showStatus('error', 'Please enter a calendar name and Calendar URL.')
       return
     }
 
@@ -166,7 +166,7 @@ export default function CalendarsPage() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">Calendars</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Connect iCal feeds from Google, Apple, Outlook, and more
+              Connect calendar feeds from Google, Apple, Outlook, and more
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -220,7 +220,7 @@ export default function CalendarsPage() {
         {/* Add Calendar Form */}
         {showAddForm && (
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">Add iCal Calendar</h2>
+            <h2 className="text-base font-semibold text-gray-900 mb-4">Add Calendar</h2>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -236,7 +236,7 @@ export default function CalendarsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  iCal URL
+                  Calendar URL
                 </label>
                 <input
                   type="url"
@@ -246,7 +246,7 @@ export default function CalendarsPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent font-mono"
                 />
                 <p className="mt-1 text-xs text-gray-400">
-                  Paste an iCal link (<code className="font-mono">.ics</code>) or a <code className="font-mono">webcal://</code> subscription link — both work.
+                  Paste an calendar link (<code className="font-mono">.ics</code>) or a <code className="font-mono">webcal://</code> subscription link — both work.
                 </p>
               </div>
               <div>
@@ -330,7 +330,7 @@ export default function CalendarsPage() {
             </div>
             <p className="text-sm font-medium text-gray-700">No calendars connected</p>
             <p className="text-xs text-gray-400 mt-1">
-              Add an iCal URL to start syncing events with your family.
+              Add an Calendar URL to start syncing events with your family.
             </p>
           </div>
         ) : (
@@ -399,7 +399,7 @@ export default function CalendarsPage() {
 
         {/* Help text */}
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-          <p className="text-xs font-medium text-blue-800 mb-1">How to get your iCal URL</p>
+          <p className="text-xs font-medium text-blue-800 mb-1">How to get your Calendar URL</p>
           <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
             <li>
               <strong>Google Calendar:</strong> Settings → your calendar → Integrate calendar → Secret address in iCal format
