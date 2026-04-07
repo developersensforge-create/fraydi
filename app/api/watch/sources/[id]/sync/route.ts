@@ -76,7 +76,8 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   // Fetch the iCal feed
   let icalText: string
   try {
-    const res = await fetch(source.url)
+    const fetchUrl = source.url.replace(/^webcal:\/\//i, 'https://')
+    const res = await fetch(fetchUrl)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     icalText = await res.text()
   } catch (err: unknown) {

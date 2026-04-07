@@ -110,7 +110,11 @@ async function parseIcal(icalText: string): Promise<ParsedEvent[]> {
 export async function POST(request: NextRequest) {
   try {
     const body: ImportBody = await request.json()
-    const { ical_url, profile_id, family_id, calendar_name, color } = body
+    const { ical_url: raw_ical_url, profile_id, family_id, calendar_name, color } = body
+    // Normalize webcal:// → https:// (webcal is the same protocol, just a different scheme)
+    const ical_url = typeof raw_ical_url === 'string'
+      ? raw_ical_url.replace(/^webcal:\/\//i, 'https://')
+      : raw_ical_url
 
     if (!ical_url || !profile_id || !family_id) {
       return NextResponse.json(

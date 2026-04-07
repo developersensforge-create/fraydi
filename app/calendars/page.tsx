@@ -80,8 +80,11 @@ export default function CalendarsPage() {
       return
     }
 
-    if (!newUrl.startsWith('http')) {
-      showStatus('error', 'Please enter a valid iCal URL starting with http(s).')
+    // Normalize webcal:// → https:// (webcal is just https with a different scheme for calendar apps)
+    const normalizedUrl = newUrl.trim().replace(/^webcal:\/\//i, 'https://')
+
+    if (!normalizedUrl.startsWith('http')) {
+      showStatus('error', 'Please enter a valid iCal or webcal:// URL.')
       return
     }
 
@@ -109,7 +112,7 @@ export default function CalendarsPage() {
       color: newColor,
       last_synced_at: new Date().toISOString(),
       event_count: 0,
-      ical_url: newUrl.trim(),
+      ical_url: normalizedUrl,
     }
 
     setCalendars((prev) => [...prev, newCalendar])
@@ -239,11 +242,11 @@ export default function CalendarsPage() {
                   type="url"
                   value={newUrl}
                   onChange={(e) => setNewUrl(e.target.value)}
-                  placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+                  placeholder="https://… or webcal://…"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent font-mono"
                 />
                 <p className="mt-1 text-xs text-gray-400">
-                  Paste a private .ics link from Google Calendar, Apple Calendar, Outlook, etc.
+                  Paste an iCal link (<code className="font-mono">.ics</code>) or a <code className="font-mono">webcal://</code> subscription link — both work.
                 </p>
               </div>
               <div>
