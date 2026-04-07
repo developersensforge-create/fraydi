@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+const getSupabaseAdmin = () => createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
 )
 
 // Simple iCal parser — no external deps
@@ -59,7 +59,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   const { id } = params
 
   // Fetch the source record
-  const { data: source, error: srcError } = await supabaseAdmin
+  const { data: source, error: srcError } = await getSupabaseAdmin()
     .from('watch_sources')
     .select('*')
     .eq('id', id)
@@ -102,15 +102,15 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   }))
 
   // Delete old events from this source, then insert fresh
-  await supabaseAdmin.from('watch_events').delete().eq('source_id', id)
+  await getSupabaseAdmin().from('watch_events').delete().eq('source_id', id)
 
-  const { error: insertError } = await supabaseAdmin.from('watch_events').insert(rows)
+  const { error: insertError } = await getSupabaseAdmin().from('watch_events').insert(rows)
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
 
   // Update last_synced_at on the source
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('watch_sources')
     .update({ last_synced_at: new Date().toISOString() })
     .eq('id', id)

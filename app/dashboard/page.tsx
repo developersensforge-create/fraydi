@@ -5,7 +5,8 @@ import { useSession } from 'next-auth/react'
 import Navbar from '@/components/Navbar'
 import EventCard, { FamilyEvent } from '@/components/EventCard'
 import CoordinationAlert from '@/components/CoordinationAlert'
-import ShoppingList from '@/components/ShoppingList'
+import WatchList from '@/components/WatchList'
+import RoutinesCard from '@/components/RoutinesCard'
 
 type ViewMode = 'Today' | 'Week' | 'Month'
 
@@ -18,6 +19,7 @@ type CalendarEvent = {
 }
 
 function toFamilyEvent(e: CalendarEvent): FamilyEvent {
+  const isAllDay = !e.start.dateTime
   const startTime = e.start.dateTime
     ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : 'All day'
@@ -28,6 +30,7 @@ function toFamilyEvent(e: CalendarEvent): FamilyEvent {
     memberName: 'You',
     memberColor: '#f96400',
     requiresCoverage: false,
+    isAllDay,
   }
 }
 
@@ -54,6 +57,7 @@ export default function DashboardPage() {
   const [events, setEvents] = useState<FamilyEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [synced, setSynced] = useState(false)
+  const [calendarCount, setCalendarCount] = useState<number | null>(null)
   const { data: session } = useSession()
 
   useEffect(() => {
@@ -66,14 +70,21 @@ export default function DashboardPage() {
         if (data.events) {
           setEvents(data.events.map(toFamilyEvent))
           setSynced(true)
+          // Try to infer calendar count from the response
+          if (data.calendarCount) setCalendarCount(data.calendarCount)
+          else setCalendarCount(1)
         }
       })
-      .catch(() => {}) // silently fail — show empty state
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [session, currentDate])
 
   const isToday = formatDate(currentDate) === formatDate(today)
   const navDelta = viewMode === 'Month' ? 30 : viewMode === 'Week' ? 7 : 1
+
+  // Split all-day vs timed events
+  const allDayEvents = events.filter((e) => e.isAllDay)
+  const timedEvents = events.filter((e) => !e.isAllDay)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -90,7 +101,8 @@ export default function DashboardPage() {
 
         {/* Desktop layout: sidebar + main + right */}
         <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left sidebar — view toggle (desktop) / top tabs (mobile) */}
+
+          {/* ── Left sidebar — view toggle ── */}
           <aside className="lg:w-40 flex-shrink-0">
             {/* Mobile: horizontal tabs */}
             <div className="flex lg:hidden gap-1 bg-white rounded-xl border border-gray-200 p-1 mb-4">
@@ -127,8 +139,10 @@ export default function DashboardPage() {
             </div>
           </aside>
 
-          {/* Main — Family Timeline */}
-          <section className="flex-1 min-w-0">
+          {/* ── Main column: Calendar Events + Routines ── */}
+          <section className="flex-1 min-w-0 flex flex-col gap-6">
+
+            {/* Calendar Events card */}
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
               {/* Date header with navigation */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -192,13 +206,26 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="relative">
-                    {/* Timeline line */}
-                    <div className="absolute left-[4.75rem] top-2 bottom-2 w-px bg-gray-100" />
-                    <div className="divide-y divide-gray-50">
-                      {events.map((event) => (
-                        <EventCard key={event.id} event={event} />
-                      ))}
-                    </div>
+                    {/* All-day events band */}
+                    {allDayEvents.length > 0 && (
+                      <div className="mb-3 pb-3 border-b border-gray-100">
+                        {allDayEvents.map((event) => (
+                          <EventCard key={event.id} event={event} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Timed events timeline */}
+                    {timedEvents.length > 0 && (
+                      <div className="relative">
+                        <div className="absolute left-[4.75rem] top-2 bottom-2 w-px bg-gray-100" />
+                        <div className="divide-y divide-gray-50">
+                          {timedEvents.map((event) => (
+                            <EventCard key={event.id} event={event} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -212,14 +239,23 @@ export default function DashboardPage() {
                     ? '✅ Synced with Google Calendar'
                     : '🗓 Connect Google Calendar to see real events'}
                 </p>
+                {synced && calendarCount !== null && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    {calendarCount} calendar{calendarCount !== 1 ? 's' : ''} synced
+                  </p>
+                )}
               </div>
             </div>
+
+            {/* Routines card (below calendar) */}
+            <RoutinesCard />
           </section>
 
-          {/* Right panel */}
+          {/* ── Right column: Conflict Alerts + Watch List ── */}
+          {/* Mobile order: Conflict Alerts appears right after Calendar (before Routines) via order classes */}
           <aside className="lg:w-72 flex-shrink-0 flex flex-col gap-6">
             <CoordinationAlert />
-            <ShoppingList />
+            <WatchList />
           </aside>
         </div>
       </main>
