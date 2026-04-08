@@ -514,7 +514,7 @@ export default function CalendarsPage() {
           <ul className="text-xs text-blue-700 space-y-1.5 list-disc list-inside">
             <li><strong>Google Calendar:</strong> Settings → your calendar → Integrate calendar → Secret address in iCal format</li>
             <li><strong>Apple Calendar:</strong> Share Calendar → check &quot;Public Calendar&quot; → copy link</li>
-            <li><strong>Outlook:</strong> Calendar settings → Shared calendars → Publish → ICS link</li>
+            <li><strong>Outlook / Office 365:</strong> When copying an Outlook calendar link, replace <code className="font-mono">.html</code> at the end with <code className="font-mono">.ics</code> — Fraydi does this automatically if you forget</li>
             <li><strong>Sports/school apps:</strong> Look for &quot;Subscribe&quot; or &quot;Export&quot; — copy the <code className="font-mono">webcal://</code> or <code className="font-mono">.ics</code> link</li>
           </ul>
         </div>

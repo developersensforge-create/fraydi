@@ -51,8 +51,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "name and url are required" }, { status: 400 });
   }
 
-  // Normalize webcal://
-  const normalizedUrl = url.trim().replace(/^webcal:\/\//i, "https://");
+  // Normalize webcal:// → https://
+  let normalizedUrl = url.trim().replace(/^webcal:\/\//i, "https://");
+
+  // Outlook / OWA: swap .html suffix → .ics (common mistake when copying the web view URL)
+  // e.g. https://outlook.office365.com/owa/calendar/.../calendar.html → calendar.ics
+  normalizedUrl = normalizedUrl.replace(/\/calendar\.html(\?.*)?$/, "/calendar.ics$1");
+  normalizedUrl = normalizedUrl.replace(/\/reachcalendar\.html(\?.*)?$/, "/reachcalendar.ics$1");
 
   // Check for duplicate
   const checkRes = await supa(
@@ -86,7 +91,7 @@ export async function POST(req: NextRequest) {
   try {
     const feedRes = await fetch(normalizedUrl, {
       headers: { "User-Agent": "Fraydi/1.0 Calendar Importer" },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!feedRes.ok) throw new Error(`HTTP ${feedRes.status}`);
     const icalText = await feedRes.text();
