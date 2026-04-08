@@ -1,6 +1,7 @@
 export type CalendarEvent = {
   id: string
   summary: string
+  description?: string
   start: { dateTime?: string; date?: string; timeZone?: string }
   end: { dateTime?: string; date?: string; timeZone?: string }
   attendees?: Array<{ email: string; displayName?: string }>

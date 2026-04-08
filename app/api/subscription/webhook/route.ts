@@ -6,8 +6,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-03-31.basil',
 })
 
-// Stripe requires the raw body for webhook signature verification
-export const config = { api: { bodyParser: false } }
+// Next.js App Router reads body as text() — no config needed
 
 // POST /api/subscription/webhook — Stripe webhook handler
 export async function POST(request: NextRequest) {
