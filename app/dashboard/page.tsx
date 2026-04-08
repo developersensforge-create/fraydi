@@ -315,33 +315,64 @@ export default function DashboardPage() {
                   <span className="text-sm font-medium" style={{ color: selectedEvent.calendarColor }}>{selectedEvent.calendarName}</span>
                 </div>
 
-                {/* Location */}
-                {selectedEvent.location && (
-                  <div className="flex items-start gap-2">
-                    <span className="text-base">📍</span>
-                    <span className="text-sm text-gray-700 break-all">{selectedEvent.location}</span>
-                  </div>
-                )}
-
-                {/* Description / meeting link */}
-                {selectedEvent.description && (
-                  <div className="flex items-start gap-2">
-                    <span className="text-base">📝</span>
-                    <div className="text-sm text-gray-600 whitespace-pre-wrap break-words max-h-40 overflow-y-auto leading-relaxed">
-                      {/* Extract and highlight URLs */}
-                      {selectedEvent.description.split(/(https?:\/\/[^\s<>]+)/g).map((part, i) =>
-                        /^https?:\/\//.test(part)
-                          ? <a key={i} href={part} target="_blank" rel="noopener noreferrer"
-                              className="text-[#f96400] underline break-all">{part}</a>
-                          : <span key={i}>{part}</span>
+                {/* Extract join links and clean location for display */}
+                {(() => {
+                  const combined = [selectedEvent.location, selectedEvent.description].filter(Boolean).join('\n')
+                  // Extract Teams and Zoom join URLs
+                  const joinUrl = combined.match(/https?:\/\/teams\.microsoft\.com\/meet\/[^\s<>)]+/)?.[0]
+                    ?? combined.match(/https?:\/\/[^\s<>)]*zoom\.us\/j\/[^\s<>)]+/)?.[0]
+                    ?? combined.match(/https?:\/\/meet\.google\.com\/[^\s<>)]+/)?.[0]
+                  // Clean location: strip ___ lines, angle-bracket wrapped URLs, short noise
+                  const cleanLocation = (selectedEvent.location ?? '')
+                    .replace(/<https?:\/\/[^>]+>/g, '')
+                    .split('\n')
+                    .map(l => l.trim())
+                    .filter(l => l && !l.startsWith('___') && !l.startsWith('https://') && l !== 'Microsoft Teams meeting' && l !== 'Microsoft Teams Meeting')
+                    .join('\n')
+                    .trim()
+                  // Clean description
+                  const cleanDesc = (selectedEvent.description ?? '')
+                    .replace(/<https?:\/\/[^>]+>/g, '')
+                    .split('\n')
+                    .map(l => l.trim())
+                    .filter(l => l && !l.startsWith('___') && !l.startsWith('https://') && l !== 'Microsoft Teams meeting' && l !== 'Microsoft Teams Meeting')
+                    .join('\n')
+                    .trim()
+                  return (
+                    <>
+                      {/* Join button — Teams / Zoom / Meet */}
+                      {joinUrl && (
+                        <div>
+                          <a href={joinUrl} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition"
+                            style={{ backgroundColor: joinUrl.includes('teams') ? '#6264A7' : joinUrl.includes('zoom') ? '#2D8CFF' : '#1a73e8' }}>
+                            {joinUrl.includes('teams') ? '🟣 Join Teams Meeting' : joinUrl.includes('zoom') ? '🔵 Join Zoom Meeting' : '🟢 Join Google Meet'}
+                          </a>
+                        </div>
                       )}
-                    </div>
-                  </div>
-                )}
 
-                {/* Open in Google Calendar link */}
+                      {/* Location (cleaned) */}
+                      {cleanLocation && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-base">📍</span>
+                          <span className="text-sm text-gray-700">{cleanLocation}</span>
+                        </div>
+                      )}
+
+                      {/* Description (cleaned) */}
+                      {cleanDesc && cleanDesc !== 'Microsoft Teams Meeting' && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-base">📝</span>
+                          <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">{cleanDesc}</p>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+
+                {/* Open in Google Calendar */}
                 {selectedEvent.htmlLink && (
-                  <div className="pt-2">
+                  <div className="pt-1">
                     <a href={selectedEvent.htmlLink} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#f96400] text-white text-xs font-semibold rounded-lg hover:bg-orange-600 transition">
                       Open in Google Calendar ↗
