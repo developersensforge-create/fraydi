@@ -12,6 +12,7 @@ interface CalendarSource {
   last_synced_at: string | null
   event_count: number
   ical_url: string
+  active: boolean
 }
 
 const COLOR_PRESETS = ['#f96400','#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899']
@@ -124,6 +125,22 @@ export default function CalendarsPage() {
       showStatus('success', `Synced! ${data.imported} events imported.`)
     } finally {
       setIsSyncing(null)
+    }
+  }
+
+  async function handleToggle(cal: CalendarSource) {
+    const newActive = !cal.active
+    // Optimistic update
+    setCalendars(prev => prev.map(c => c.id === cal.id ? { ...c, active: newActive } : c))
+    const res = await fetch(`/api/user/calendars?id=${cal.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: newActive }),
+    })
+    if (!res.ok) {
+      // Revert on failure
+      setCalendars(prev => prev.map(c => c.id === cal.id ? { ...c, active: !newActive } : c))
+      showStatus('error', 'Failed to update.')
     }
   }
 
@@ -249,7 +266,7 @@ export default function CalendarsPage() {
         ) : (
           <div className="space-y-3">
             {calendars.map((cal) => (
-              <div key={cal.id} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4">
+              <div key={cal.id} className={`bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4 transition-opacity ${cal.active ? 'opacity-100' : 'opacity-50'}`}>
                 <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: cal.color + '22' }}>
                   <div className="w-4 h-4 rounded-full" style={{ backgroundColor: cal.color }} />
                 </div>
@@ -262,17 +279,22 @@ export default function CalendarsPage() {
                   </div>
                   <p className="text-xs text-gray-300 truncate mt-0.5 font-mono">{cal.ical_url}</p>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Toggle on/off */}
+                  <button onClick={() => handleToggle(cal)} title={cal.active ? 'Hide from dashboard' : 'Show on dashboard'}
+                    className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${cal.active ? 'bg-[#f96400]' : 'bg-gray-200'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cal.active ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
                   {/* Re-sync */}
                   <button onClick={() => handleResync(cal)} disabled={isSyncing === cal.id}
-                    className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50" title="Re-sync">
+                    className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50" title="Re-sync">
                     <svg className={`w-4 h-4 ${isSyncing === cal.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                   </button>
                   {/* Delete */}
                   <button onClick={() => handleDelete(cal.id, cal.name)} disabled={deletingId === cal.id}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Remove">
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Remove">
                     <svg className={`w-4 h-4 ${deletingId === cal.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>

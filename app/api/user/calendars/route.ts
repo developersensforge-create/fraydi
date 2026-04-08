@@ -208,3 +208,23 @@ function parseIcal(text: string) {
   }
   return events;
 }
+
+// PATCH /api/user/calendars?id=xxx — toggle active
+export async function PATCH(req: NextRequest) {
+  const session = await getServerSession(authOptions) as any;
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+  const email = session.user.email;
+  const id = req.nextUrl.searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  const { active } = await req.json();
+  const res = await supa(`/calendar_sources?id=eq.${id}&user_email=eq.${encodeURIComponent(email)}`, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ active }),
+  });
+  if (!res.ok) return NextResponse.json({ error: await res.text() }, { status: 500 });
+  const [updated] = await res.json();
+  return NextResponse.json({ calendar: updated });
+}
