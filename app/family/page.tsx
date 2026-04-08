@@ -1,88 +1,191 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import FamilyMemberCard, { FamilyMember } from '@/components/FamilyMemberCard'
+import Navbar from '@/components/Navbar'
 
-// TODO: wire to Supabase — fetch family group data
-const MOCK_INVITE_CODE = 'FRD-7X2K'
-const MOCK_FAMILY_NAME = 'The Johnson Family'
+type Member = {
+  id: string
+  name: string
+  email?: string
+  role: string
+  color: string
+  isSelf?: boolean
+}
 
-// TODO: wire to Supabase — fetch family_members table
-const MOCK_MEMBERS: FamilyMember[] = [
-  { id: 'u1', name: 'Sarah Johnson', role: 'Parent/Guardian', color: '#f96400', isSelf: true },
-  { id: 'u2', name: 'Mike Johnson', role: 'Parent/Guardian', color: '#3b82f6' },
-  { id: 'u3', name: 'Lily Johnson', role: 'Child', color: '#8b5cf6', ageOrGrade: 'Grade 4' },
-  { id: 'u4', name: 'Emma Johnson', role: 'Child', color: '#10b981', ageOrGrade: '8' },
-]
+type Kid = {
+  id: string
+  name: string
+  age?: string | number
+}
+
+type FamilyData = {
+  id: string
+  name: string
+  invite_token?: string
+  inviteToken?: string
+  members: Member[]
+  kids: Kid[]
+}
 
 export default function FamilyPage() {
-  // TODO: wire to Supabase — family group state
-  const [familyName, setFamilyName] = useState(MOCK_FAMILY_NAME)
-  const [editingFamilyName, setEditingFamilyName] = useState(false)
-  const [familyNameInput, setFamilyNameInput] = useState(MOCK_FAMILY_NAME)
-  const [members, setMembers] = useState<FamilyMember[]>(MOCK_MEMBERS)
-  const [copied, setCopied] = useState(false)
+  const { data: session, status } = useSession()
+  const router = useRouter()
+
+  const [family, setFamily] = useState<FamilyData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const [familyName, setFamilyName] = useState('')
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState('')
+  const [savingName, setSavingName] = useState(false)
+
   const [inviteCopied, setInviteCopied] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [showInviteInput, setShowInviteInput] = useState(false)
+  const [sendingInvite, setSendingInvite] = useState(false)
+  const [inviteSent, setInviteSent] = useState(false)
+
   const [addingChild, setAddingChild] = useState(false)
   const [newChildName, setNewChildName] = useState('')
+  const [newChildAge, setNewChildAge] = useState('')
+  const [savingChild, setSavingChild] = useState(false)
+
   const [notification, setNotification] = useState<string | null>(null)
 
-  const showNotification = (msg: string) => {
+  useEffect(() => {
+    if (status === 'unauthenticated') router.push('/login')
+  }, [status, router])
+
+  const showNotif = (msg: string) => {
     setNotification(msg)
     setTimeout(() => setNotification(null), 2500)
   }
 
-  const commitFamilyName = () => {
-    setEditingFamilyName(false)
-    if (familyNameInput.trim()) {
-      setFamilyName(familyNameInput.trim())
-      // TODO: wire to Supabase — update family group name
-    } else {
-      setFamilyNameInput(familyName)
+  const loadFamily = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/family')
+      if (res.status === 404) {
+        // No family yet — redirect to onboarding
+        router.push('/onboarding')
+        return
+      }
+      if (!res.ok) throw new Error('Failed to load family data')
+      const data: FamilyData = await res.json()
+      setFamily(data)
+      setFamilyName(data.name)
+      setNameInput(data.name)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load family')
+    } finally {
+      setLoading(false)
+    }
+  }, [router])
+
+  useEffect(() => {
+    if (status === 'authenticated') loadFamily()
+  }, [status, loadFamily])
+
+  const saveFamilyName = async () => {
+    if (!nameInput.trim() || nameInput.trim() === familyName) {
+      setEditingName(false)
+      return
+    }
+    setSavingName(true)
+    try {
+      const res = await fetch('/api/family', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nameInput.trim() }),
+      })
+      if (!res.ok) throw new Error('Failed to save')
+      setFamilyName(nameInput.trim())
+      setEditingName(false)
+      showNotif('Family name updated!')
+    } catch {
+      showNotif('Failed to save family name')
+    } finally {
+      setSavingName(false)
     }
   }
 
-  const copyInviteCode = () => {
-    navigator.clipboard.writeText(MOCK_INVITE_CODE).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
   const copyInviteLink = () => {
-    // TODO: wire to Supabase — generate real invite URL
-    const link = `https://fraydi.app/join/${MOCK_INVITE_CODE}`
+    const token = family?.invite_token || family?.inviteToken
+    if (!token) return
+    const link = `${window.location.origin}/join/${token}`
     navigator.clipboard.writeText(link).then(() => {
       setInviteCopied(true)
-      showNotification('Invite link copied!')
+      showNotif('Invite link copied!')
       setTimeout(() => setInviteCopied(false), 2000)
     })
   }
 
-  const updateMember = (updated: FamilyMember) => {
-    setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
-    // TODO: wire to Supabase — update family_members row
-  }
-
-  const removeMember = (id: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== id))
-    // TODO: wire to Supabase — delete family_members row
-  }
-
-  const addChild = () => {
-    if (!newChildName.trim()) return
-    const newMember: FamilyMember = {
-      id: `child-${Date.now()}`,
-      name: newChildName.trim(),
-      role: 'Child',
-      color: '#14b8a6',
+  const sendInvite = async () => {
+    if (!inviteEmail.trim()) return
+    setSendingInvite(true)
+    try {
+      const res = await fetch('/api/family/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to send')
+      setInviteSent(true)
+      setInviteEmail('')
+      showNotif('Invite sent!')
+      setTimeout(() => { setInviteSent(false); setShowInviteInput(false) }, 2500)
+    } catch (e: unknown) {
+      showNotif(e instanceof Error ? e.message : 'Failed to send invite')
+    } finally {
+      setSendingInvite(false)
     }
-    setMembers((prev) => [...prev, newMember])
-    // TODO: wire to Supabase — insert into family_members
-    setNewChildName('')
-    setAddingChild(false)
-    showNotification(`${newMember.name} added!`)
+  }
+
+  const addChild = async () => {
+    if (!newChildName.trim()) return
+    setSavingChild(true)
+    try {
+      const res = await fetch('/api/family/kids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newChildName.trim(), age: newChildAge || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to add child')
+      const newKid: Kid = data.kid || data
+      setFamily(prev => prev ? { ...prev, kids: [...(prev.kids || []), newKid] } : prev)
+      setNewChildName('')
+      setNewChildAge('')
+      setAddingChild(false)
+      showNotif(`${newChildName} added!`)
+    } catch (e: unknown) {
+      showNotif(e instanceof Error ? e.message : 'Failed to add child')
+    } finally {
+      setSavingChild(false)
+    }
+  }
+
+  const inviteToken = family?.invite_token || family?.inviteToken
+
+  if (status === 'loading' || loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-gray-200 rounded-xl w-48" />
+            <div className="h-32 bg-gray-200 rounded-2xl" />
+            <div className="h-32 bg-gray-200 rounded-2xl" />
+          </div>
+        </main>
+      </div>
+    )
   }
 
   return (
@@ -94,142 +197,215 @@ export default function FamilyPage() {
         </div>
       )}
 
-      {/* Back nav */}
-      <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3">
-        <div className="max-w-2xl mx-auto flex items-center gap-3">
-          <Link
-            href="/dashboard"
-            className="text-sm text-gray-500 hover:text-[#f96400] transition-colors flex items-center gap-1"
-          >
-            ← Dashboard
-          </Link>
-        </div>
-      </div>
+      <Navbar />
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
-        {/* Family Header Card */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          {/* Family Name */}
-          <div className="mb-4">
-            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Family Name</label>
-            {editingFamilyName ? (
-              <input
-                autoFocus
-                value={familyNameInput}
-                onChange={(e) => setFamilyNameInput(e.target.value)}
-                onBlur={commitFamilyName}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitFamilyName()
-                  if (e.key === 'Escape') { setEditingFamilyName(false); setFamilyNameInput(familyName) }
-                }}
-                className="mt-1 w-full text-xl font-bold text-gray-900 border-b-2 border-[#f96400] focus:outline-none bg-transparent pb-0.5"
-              />
-            ) : (
-              <button
-                onClick={() => { setEditingFamilyName(true); setFamilyNameInput(familyName) }}
-                className="mt-1 block text-xl font-bold text-gray-900 hover:text-[#f96400] transition-colors text-left w-full"
-                title="Click to edit family name"
-              >
-                {familyName} ✏️
-              </button>
-            )}
-          </div>
-
-          {/* Invite code */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex items-center gap-2 flex-1 bg-gray-50 rounded-xl border border-gray-200 px-4 py-3">
-              <span className="text-xs text-gray-500">Invite code:</span>
-              <span className="font-mono font-bold text-gray-900 tracking-widest">{MOCK_INVITE_CODE}</span>
-              <button
-                onClick={copyInviteCode}
-                className="ml-auto text-lg hover:scale-110 transition-transform"
-                title="Copy invite code"
-              >
-                {copied ? '✅' : '📋'}
-              </button>
-            </div>
-            <button
-              onClick={copyInviteLink}
-              className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
-                inviteCopied
-                  ? 'bg-green-100 text-green-700 border border-green-200'
-                  : 'bg-[#f96400] text-white hover:bg-[#d95400]'
-              }`}
-            >
-              {inviteCopied ? '✓ Copied!' : '🔗 Share invite link'}
-            </button>
-          </div>
-        </div>
-
-        {/* Member List */}
         <div>
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Family Members ({members.length})
-          </h2>
-          <div className="flex flex-col gap-3">
-            {members.map((member) => (
-              <FamilyMemberCard
-                key={member.id}
-                member={member}
-                onUpdate={updateMember}
-                onRemove={removeMember}
-              />
-            ))}
-          </div>
+          <h1 className="text-2xl font-extrabold text-gray-900">Family</h1>
+          <p className="text-gray-500 text-sm mt-1">Manage your family members, kids, and invite links.</p>
         </div>
 
-        {/* Add Member section */}
-        <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Add a Member</h2>
-
-          <div className="flex flex-col sm:flex-row gap-3">
-            {/* Invite via link */}
-            <button
-              onClick={copyInviteLink}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-[#f96400] hover:text-[#f96400] transition-colors bg-gray-50 hover:bg-orange-50"
-            >
-              📨 Invite via link
-              <span className="text-xs font-normal text-gray-400">(copies URL)</span>
-            </button>
-
-            {/* Add child/dependent */}
-            {!addingChild ? (
-              <button
-                onClick={() => setAddingChild(true)}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-[#f96400] hover:text-[#f96400] transition-colors bg-gray-50 hover:bg-orange-50"
-              >
-                👶 Add child/dependent
-              </button>
-            ) : (
-              <div className="flex-1 flex gap-2">
-                <input
-                  autoFocus
-                  type="text"
-                  value={newChildName}
-                  onChange={(e) => setNewChildName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') addChild()
-                    if (e.key === 'Escape') { setAddingChild(false); setNewChildName('') }
-                  }}
-                  placeholder="Child's name…"
-                  className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-                />
-                <button
-                  onClick={addChild}
-                  className="px-3 py-2 rounded-xl bg-[#f96400] text-white text-sm font-semibold hover:bg-[#d95400] transition-colors"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => { setAddingChild(false); setNewChildName('') }}
-                  className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
+        {error && (
+          <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">
+            {error} <button onClick={loadFamily} className="underline ml-2">Retry</button>
           </div>
-        </div>
+        )}
+
+        {family && (
+          <>
+            {/* ── Family Header ── */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Family Name</label>
+              {editingName ? (
+                <div className="flex gap-2 mt-1">
+                  <input
+                    autoFocus
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveFamilyName()
+                      if (e.key === 'Escape') { setEditingName(false); setNameInput(familyName) }
+                    }}
+                    className="flex-1 text-xl font-bold text-gray-900 border-b-2 border-[#f96400] focus:outline-none bg-transparent pb-0.5"
+                  />
+                  <button
+                    onClick={saveFamilyName}
+                    disabled={savingName}
+                    className="text-sm text-[#f96400] font-semibold hover:underline disabled:opacity-60"
+                  >
+                    {savingName ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => { setEditingName(false); setNameInput(familyName) }}
+                    className="text-sm text-gray-400 hover:text-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setEditingName(true); setNameInput(familyName) }}
+                  className="mt-1 block text-xl font-bold text-gray-900 hover:text-[#f96400] transition-colors text-left w-full"
+                  title="Click to edit"
+                >
+                  {familyName} ✏️
+                </button>
+              )}
+
+              {/* Invite link */}
+              {inviteToken && (
+                <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                  <div className="flex items-center gap-2 flex-1 bg-gray-50 rounded-xl border border-gray-200 px-4 py-3">
+                    <span className="text-xs text-gray-400 flex-shrink-0">Invite:</span>
+                    <span className="text-xs font-mono text-gray-700 truncate flex-1">
+                      {typeof window !== 'undefined' ? `${window.location.origin}/join/${inviteToken}` : `/join/${inviteToken}`}
+                    </span>
+                    <button onClick={copyInviteLink} className="ml-auto text-lg hover:scale-110 transition-transform" title="Copy">
+                      {inviteCopied ? '✅' : '📋'}
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowInviteInput(!showInviteInput)}
+                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold bg-[#f96400] text-white hover:bg-[#d95400] transition"
+                  >
+                    📨 Send invite
+                  </button>
+                </div>
+              )}
+
+              {/* Email invite input */}
+              {showInviteInput && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="Partner's email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && sendInvite()}
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+                  />
+                  <button
+                    onClick={sendInvite}
+                    disabled={sendingInvite}
+                    className="bg-[#f96400] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#d95400] transition disabled:opacity-60"
+                  >
+                    {sendingInvite ? '...' : inviteSent ? '✅ Sent!' : 'Send'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ── Members ── */}
+            <div>
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Family Members ({family.members?.length || 0})
+              </h2>
+              {family.members?.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center text-gray-400 text-sm">
+                  No members yet. Invite your partner above!
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {family.members?.map(member => (
+                    <div key={member.id} className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                        style={{ backgroundColor: member.color || '#f96400' }}
+                      >
+                        {member.name?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">
+                          {member.name}
+                          {member.isSelf && <span className="ml-2 text-xs text-gray-400">(you)</span>}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">{member.role}</p>
+                      </div>
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }} title={`Calendar color`} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Kids ── */}
+            <div>
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Kids ({family.kids?.length || 0})
+              </h2>
+              {family.kids?.length > 0 && (
+                <div className="flex flex-col gap-2 mb-3">
+                  {family.kids.map(kid => (
+                    <div key={kid.id} className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
+                      <span className="text-xl">👶</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{kid.name}</p>
+                        {kid.age && <p className="text-xs text-gray-400">Age {kid.age}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add child form */}
+              {!addingChild ? (
+                <button
+                  onClick={() => setAddingChild(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-gray-300 text-sm font-semibold text-gray-500 hover:border-[#f96400] hover:text-[#f96400] transition-colors bg-white"
+                >
+                  + Add child
+                </button>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                  <p className="text-sm font-semibold text-gray-700 mb-3">Add a child</p>
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Child's name"
+                      value={newChildName}
+                      onChange={e => setNewChildName(e.target.value)}
+                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Age"
+                      value={newChildAge}
+                      onChange={e => setNewChildAge(e.target.value)}
+                      className="w-20 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={addChild}
+                      disabled={savingChild}
+                      className="flex-1 bg-[#f96400] text-white py-2 rounded-xl text-sm font-semibold hover:bg-[#d95400] transition disabled:opacity-60"
+                    >
+                      {savingChild ? 'Adding...' : 'Add child'}
+                    </button>
+                    <button
+                      onClick={() => { setAddingChild(false); setNewChildName(''); setNewChildAge('') }}
+                      className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {!family && !loading && !error && (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-3">🏠</div>
+            <p className="text-gray-700 font-semibold mb-2">No family yet</p>
+            <p className="text-gray-500 text-sm mb-4">Set up your family to get started.</p>
+            <Link href="/onboarding" className="bg-[#f96400] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#d95400] transition">
+              Set up family
+            </Link>
+          </div>
+        )}
       </main>
     </div>
   )

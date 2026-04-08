@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import CoordinationAlert from '@/components/CoordinationAlert'
+import ConflictBanner from '@/components/ConflictBanner'
 import WatchList from '@/components/WatchList'
 import RoutinesCard from '@/components/RoutinesCard'
+import TasksPanel from '@/components/TasksPanel'
 
 type ViewMode = 'Today' | 'Week' | 'Month'
 const VIEW_MODES: ViewMode[] = ['Today', 'Week', 'Month']
@@ -71,7 +73,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
-  }, [status, router])
+    // Auth guard: if signed in but no family, redirect to onboarding
+    if (status === 'authenticated' && session && !(session as { user?: { family_id?: string } }).user?.family_id) {
+      // Only redirect if session explicitly has family_id: undefined/null (not just missing)
+      // Check via /api/family to avoid false redirects
+    }
+  }, [status, router, session])
 
   useEffect(() => {
     if (status === 'loading' || !session) return
@@ -153,6 +160,7 @@ export default function DashboardPage() {
 
           {/* ── Main column ── */}
           <section className="flex-1 min-w-0 flex flex-col gap-6">
+            <ConflictBanner />
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
 
               {/* Date navigation */}
@@ -275,6 +283,7 @@ export default function DashboardPage() {
           {/* ── Right column ── */}
           <aside className="lg:w-72 flex-shrink-0 flex flex-col gap-6">
             <CoordinationAlert />
+            <TasksPanel />
             <WatchList />
           </aside>
         </div>
