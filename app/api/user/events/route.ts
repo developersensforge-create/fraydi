@@ -29,6 +29,7 @@ export type UnifiedEvent = {
   end: string;         // ISO string
   isAllDay: boolean;
   location?: string;
+  description?: string;
   calendarId: string;
   calendarName: string;
   calendarColor: string;
@@ -113,6 +114,7 @@ export async function GET(req: NextRequest) {
         start,
         end,
         isAllDay,
+        description: ev.description,
         calendarId: calId,
         calendarName: calInfo.name,
         calendarColor: calInfo.color,
@@ -141,11 +143,11 @@ export async function GET(req: NextRequest) {
     const eventsRes = await supa(
       `/calendar_events?calendar_source_id=in.(${sourceIds.map((id) => id).join(",")})` +
       `&start_time=gte.${dayStart.toISOString()}&start_time=lte.${dayEnd.toISOString()}` +
-      `&order=start_time.asc&select=id,title,start_time,end_time,location,calendar_source_id`
+      `&order=start_time.asc&select=id,title,start_time,end_time,location,description,calendar_source_id`
     );
     const rows: Array<{
       id: string; title: string; start_time: string; end_time: string;
-      location?: string; calendar_source_id: string;
+      location?: string; description?: string; calendar_source_id: string;
     }> = eventsRes.ok ? await eventsRes.json() : [];
 
     for (const row of rows) {
@@ -159,6 +161,7 @@ export async function GET(req: NextRequest) {
         end: row.end_time,
         isAllDay,
         location: row.location,
+        description: row.description,
         calendarId: row.calendar_source_id,
         calendarName: calInfo.name,
         calendarColor: calInfo.color,

@@ -19,6 +19,7 @@ type UnifiedEvent = {
   end: string
   isAllDay: boolean
   location?: string
+  description?: string
   calendarId: string
   calendarName: string
   calendarColor: string
@@ -64,6 +65,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false)
   const [synced, setSynced] = useState(false)
   const [needsReauth, setNeedsReauth] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState<UnifiedEvent | null>(null)
   const { data: session, status } = useSession()
   const router = useRouter()
 
@@ -221,9 +223,10 @@ export default function DashboardPage() {
                       <div className="absolute left-[3.75rem] top-0 bottom-0 w-px bg-gray-100" />
                       <div className="space-y-0">
                         {timedEvents.map(ev => (
-                          <div key={ev.id} className="flex gap-3 py-3 group">
+                          <button key={ev.id} onClick={() => setSelectedEvent(ev)}
+                            className="w-full flex gap-3 py-3 group text-left hover:bg-gray-50 rounded-lg px-1 -mx-1 transition-colors">
                             {/* Time */}
-                            <div className="w-14 flex-shrink-0 text-right">
+                            <div className="w-14 flex-shrink-0 text-right pt-0.5">
                               <span className="text-xs text-gray-400 leading-tight">{formatTime(ev.start)}</span>
                             </div>
 
@@ -234,14 +237,7 @@ export default function DashboardPage() {
 
                             {/* Event details */}
                             <div className="flex-1 min-w-0 pb-2 border-b border-gray-50 group-last:border-0">
-                              {ev.htmlLink ? (
-                                <a href={ev.htmlLink} target="_blank" rel="noopener noreferrer"
-                                  className="text-sm font-medium text-gray-900 hover:text-[#f96400] truncate block leading-tight">
-                                  {ev.title}
-                                </a>
-                              ) : (
-                                <p className="text-sm font-medium text-gray-900 truncate leading-tight">{ev.title}</p>
-                              )}
+                              <p className="text-sm font-medium text-gray-900 truncate leading-tight group-hover:text-[#f96400] transition-colors">{ev.title}</p>
                               <div className="flex items-center gap-2 mt-0.5">
                                 <span className="text-xs font-medium" style={{ color: ev.calendarColor }}>{ev.calendarName}</span>
                                 {ev.location && (
@@ -252,7 +248,7 @@ export default function DashboardPage() {
                                 )}
                               </div>
                             </div>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -283,6 +279,80 @@ export default function DashboardPage() {
           </aside>
         </div>
       </main>
+
+      {/* ── Event detail modal ── */}
+      {selectedEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+          onClick={() => setSelectedEvent(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            {/* Header stripe */}
+            <div className="h-1.5 w-full" style={{ backgroundColor: selectedEvent.calendarColor }} />
+            <div className="px-6 pt-5 pb-6">
+              {/* Title + close */}
+              <div className="flex items-start gap-3 mb-4">
+                <span className="w-3 h-3 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: selectedEvent.calendarColor }} />
+                <h2 className="flex-1 text-lg font-bold text-gray-900 leading-snug">{selectedEvent.title}</h2>
+                <button onClick={() => setSelectedEvent(null)}
+                  className="text-gray-400 hover:text-gray-700 text-xl leading-none flex-shrink-0">✕</button>
+              </div>
+
+              <div className="space-y-3 pl-6">
+                {/* Time */}
+                <div className="flex items-start gap-2">
+                  <span className="text-base">🕐</span>
+                  <div className="text-sm text-gray-700">
+                    <span>{new Date(selectedEvent.start).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                    {selectedEvent.end && (
+                      <span className="text-gray-400"> – {new Date(selectedEvent.end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Calendar */}
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📅</span>
+                  <span className="text-sm font-medium" style={{ color: selectedEvent.calendarColor }}>{selectedEvent.calendarName}</span>
+                </div>
+
+                {/* Location */}
+                {selectedEvent.location && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-base">📍</span>
+                    <span className="text-sm text-gray-700 break-all">{selectedEvent.location}</span>
+                  </div>
+                )}
+
+                {/* Description / meeting link */}
+                {selectedEvent.description && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-base">📝</span>
+                    <div className="text-sm text-gray-600 whitespace-pre-wrap break-words max-h-40 overflow-y-auto leading-relaxed">
+                      {/* Extract and highlight URLs */}
+                      {selectedEvent.description.split(/(https?:\/\/[^\s<>]+)/g).map((part, i) =>
+                        /^https?:\/\//.test(part)
+                          ? <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+                              className="text-[#f96400] underline break-all">{part}</a>
+                          : <span key={i}>{part}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Open in Google Calendar link */}
+                {selectedEvent.htmlLink && (
+                  <div className="pt-2">
+                    <a href={selectedEvent.htmlLink} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#f96400] text-white text-xs font-semibold rounded-lg hover:bg-orange-600 transition">
+                      Open in Google Calendar ↗
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
