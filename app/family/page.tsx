@@ -54,6 +54,14 @@ export default function FamilyPage() {
   const [newChildAge, setNewChildAge] = useState('')
   const [savingChild, setSavingChild] = useState(false)
 
+  // Add spouse/member calendar
+  const [showAddCalendar, setShowAddCalendar] = useState(false)
+  const [calMemberName, setCalMemberName] = useState('')
+  const [calIcalUrl, setCalIcalUrl] = useState('')
+  const [calColor, setCalColor] = useState('#3b82f6')
+  const [savingCal, setSavingCal] = useState(false)
+  const [calAdded, setCalAdded] = useState(false)
+
   const [notification, setNotification] = useState<string | null>(null)
 
   useEffect(() => {
@@ -168,6 +176,33 @@ export default function FamilyPage() {
       showNotif(e instanceof Error ? e.message : 'Failed to add child')
     } finally {
       setSavingChild(false)
+    }
+  }
+
+  const addMemberCalendar = async () => {
+    if (!calMemberName.trim() || !calIcalUrl.trim()) return
+    setSavingCal(true)
+    try {
+      const res = await fetch('/api/family/member-calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          member_name: calMemberName.trim(),
+          ical_url: calIcalUrl.trim(),
+          color: calColor,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to add calendar')
+      setCalAdded(true)
+      setCalMemberName(''); setCalIcalUrl(''); setCalColor('#3b82f6')
+      setShowAddCalendar(false)
+      showNotif(`${calMemberName}'s calendar added! Syncing events...`)
+      setTimeout(() => setCalAdded(false), 3000)
+    } catch (e: unknown) {
+      showNotif(e instanceof Error ? e.message : 'Failed to add calendar')
+    } finally {
+      setSavingCal(false)
     }
   }
 
@@ -381,6 +416,63 @@ export default function FamilyPage() {
                       Cancel
                     </button>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Add spouse / member calendar ── */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-sm font-semibold text-gray-700">📅 Add a family member's calendar</h2>
+                <button
+                  onClick={() => setShowAddCalendar(!showAddCalendar)}
+                  className="text-xs text-[#f96400] hover:underline font-medium"
+                >
+                  {showAddCalendar ? 'Cancel' : '+ Add calendar'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mb-3">Paste your spouse's Google Calendar iCal link — their events appear in your family timeline instantly. No signup needed.</p>
+
+              {showAddCalendar && (
+                <div className="space-y-3 pt-2 border-t border-gray-100">
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Their name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Sarah"
+                      value={calMemberName}
+                      onChange={e => setCalMemberName(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Their iCal URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://calendar.google.com/calendar/ical/..."
+                      value={calIcalUrl}
+                      onChange={e => setCalIcalUrl(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">In Google Calendar: Settings → select calendar → scroll to "Secret address in iCal format"</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Calendar color</label>
+                    <div className="flex gap-2">
+                      {['#3b82f6','#10b981','#8b5cf6','#f59e0b','#ef4444','#ec4899'].map(c => (
+                        <button key={c} onClick={() => setCalColor(c)}
+                          className={`w-7 h-7 rounded-full border-2 transition ${calColor === c ? 'border-gray-900 scale-110' : 'border-transparent'}`}
+                          style={{ backgroundColor: c }} />
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={addMemberCalendar}
+                    disabled={savingCal || !calMemberName.trim() || !calIcalUrl.trim()}
+                    className="w-full bg-[#f96400] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#d95400] transition disabled:opacity-50"
+                  >
+                    {savingCal ? 'Adding & syncing...' : calAdded ? '✅ Added!' : 'Add calendar'}
+                  </button>
                 </div>
               )}
             </div>
