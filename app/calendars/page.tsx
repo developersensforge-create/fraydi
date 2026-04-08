@@ -41,6 +41,10 @@ export default function CalendarsPage() {
   const [isSyncing, setIsSyncing] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editColor, setEditColor] = useState('')
+  const [showColorPicker, setShowColorPicker] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -142,6 +146,26 @@ export default function CalendarsPage() {
       setCalendars(prev => prev.map(c => c.id === cal.id ? { ...c, active: !newActive } : c))
       showStatus('error', 'Failed to update.')
     }
+  }
+
+  function startEdit(cal: CalendarSource) {
+    setEditingId(cal.id)
+    setEditName(cal.name)
+    setEditColor(cal.color)
+    setShowColorPicker(null)
+  }
+
+  async function saveEdit(cal: CalendarSource) {
+    if (!editName.trim()) return
+    const res = await fetch(`/api/user/calendars?id=${cal.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editName.trim(), color: editColor }),
+    })
+    if (!res.ok) { showStatus('error', 'Failed to save.'); return }
+    setCalendars(prev => prev.map(c => c.id === cal.id ? { ...c, name: editName.trim(), color: editColor } : c))
+    setEditingId(null)
+    setShowColorPicker(null)
   }
 
   if (status === 'loading') {
@@ -266,40 +290,88 @@ export default function CalendarsPage() {
         ) : (
           <div className="space-y-3">
             {calendars.map((cal) => (
-              <div key={cal.id} className={`bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4 transition-opacity ${cal.active ? 'opacity-100' : 'opacity-50'}`}>
-                <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: cal.color + '22' }}>
-                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: cal.color }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{cal.name}</p>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-xs text-gray-400">{cal.event_count} event{cal.event_count !== 1 ? 's' : ''}</span>
-                    <span className="text-xs text-gray-300">•</span>
-                    <span className="text-xs text-gray-400">Synced {formatRelativeTime(cal.last_synced_at)}</span>
+              <div key={cal.id} className={`bg-white border rounded-xl p-4 transition-opacity ${cal.active ? 'opacity-100 border-gray-200' : 'opacity-50 border-gray-200'}`}>
+                {editingId === cal.id ? (
+                  /* ── Edit mode ── */
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      {/* Color picker dot */}
+                      <div className="relative">
+                        <button onClick={() => setShowColorPicker(showColorPicker === cal.id ? null : cal.id)}
+                          className="w-9 h-9 rounded-full border-2 border-gray-300 flex-shrink-0 hover:border-gray-500 transition-colors"
+                          style={{ backgroundColor: editColor }} title="Change color" />
+                        {showColorPicker === cal.id && (
+                          <div className="absolute top-10 left-0 z-10 bg-white border border-gray-200 rounded-xl p-3 shadow-lg">
+                            <div className="flex gap-2 flex-wrap w-40">
+                              {COLOR_PRESETS.map(c => (
+                                <button key={c} onClick={() => { setEditColor(c); setShowColorPicker(null) }}
+                                  className={`w-7 h-7 rounded-full border-2 transition-transform ${editColor === c ? 'border-gray-800 scale-110' : 'border-transparent'}`}
+                                  style={{ backgroundColor: c }} />
+                              ))}
+                            </div>
+                            <input type="color" value={editColor} onChange={e => setEditColor(e.target.value)}
+                              className="mt-2 w-full h-7 rounded cursor-pointer" />
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveEdit(cal); if (e.key === 'Escape') setEditingId(null) }}
+                        autoFocus
+                        className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => saveEdit(cal)}
+                        className="px-3 py-1.5 bg-[#f96400] text-white text-xs font-semibold rounded-lg hover:bg-orange-600">Save</button>
+                      <button onClick={() => { setEditingId(null); setShowColorPicker(null) }}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200">Cancel</button>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-300 truncate mt-0.5 font-mono">{cal.ical_url}</p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {/* Toggle on/off */}
-                  <button onClick={() => handleToggle(cal)} title={cal.active ? 'Hide from dashboard' : 'Show on dashboard'}
-                    className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${cal.active ? 'bg-[#f96400]' : 'bg-gray-200'}`}>
-                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cal.active ? 'translate-x-4' : 'translate-x-0'}`} />
-                  </button>
-                  {/* Re-sync */}
-                  <button onClick={() => handleResync(cal)} disabled={isSyncing === cal.id}
-                    className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50" title="Re-sync">
-                    <svg className={`w-4 h-4 ${isSyncing === cal.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </button>
-                  {/* Delete */}
-                  <button onClick={() => handleDelete(cal.id, cal.name)} disabled={deletingId === cal.id}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Remove">
-                    <svg className={`w-4 h-4 ${deletingId === cal.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
+                ) : (
+                  /* ── View mode ── */
+                  <div className="flex items-center gap-3">
+                    {/* Color dot — click to start editing */}
+                    <button onClick={() => startEdit(cal)}
+                      className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center hover:ring-2 hover:ring-offset-1 transition-all"
+                      style={{ backgroundColor: cal.color + '22' }} title="Edit name & color">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: cal.color }} />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <button onClick={() => startEdit(cal)} className="text-sm font-semibold text-gray-900 truncate hover:text-[#f96400] transition-colors text-left w-full">
+                        {cal.name}
+                      </button>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        <span className="text-xs text-gray-400">{cal.event_count} event{cal.event_count !== 1 ? 's' : ''}</span>
+                        <span className="text-xs text-gray-300">·</span>
+                        <span className="text-xs text-gray-400">Synced {formatRelativeTime(cal.last_synced_at)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Toggle on/off */}
+                      <button onClick={() => handleToggle(cal)} title={cal.active ? 'Hide from dashboard' : 'Show on dashboard'}
+                        className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${cal.active ? 'bg-[#f96400]' : 'bg-gray-200'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cal.active ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </button>
+                      {/* Re-sync */}
+                      <button onClick={() => handleResync(cal)} disabled={isSyncing === cal.id}
+                        className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50" title="Re-sync">
+                        <svg className={`w-4 h-4 ${isSyncing === cal.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                      {/* Delete */}
+                      <button onClick={() => handleDelete(cal.id, cal.name)} disabled={deletingId === cal.id}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Remove">
+                        <svg className={`w-4 h-4 ${deletingId === cal.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

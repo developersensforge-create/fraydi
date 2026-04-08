@@ -209,7 +209,7 @@ function parseIcal(text: string) {
   return events;
 }
 
-// PATCH /api/user/calendars?id=xxx — toggle active
+// PATCH /api/user/calendars?id=xxx — update active, name, color
 export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions) as any;
   if (!session?.user?.email) {
@@ -218,11 +218,19 @@ export async function PATCH(req: NextRequest) {
   const email = session.user.email;
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const { active } = await req.json();
+  const body = await req.json();
+  // Only allow safe fields to be updated
+  const patch: Record<string, unknown> = {};
+  if (typeof body.active === "boolean") patch.active = body.active;
+  if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
+  if (typeof body.color === "string" && body.color) patch.color = body.color;
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+  }
   const res = await supa(`/calendar_sources?id=eq.${id}&user_email=eq.${encodeURIComponent(email)}`, {
     method: "PATCH",
     headers: { "Prefer": "return=representation" },
-    body: JSON.stringify({ active }),
+    body: JSON.stringify(patch),
   });
   if (!res.ok) return NextResponse.json({ error: await res.text() }, { status: 500 });
   const [updated] = await res.json();
