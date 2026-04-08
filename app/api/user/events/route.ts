@@ -77,16 +77,25 @@ export async function GET(req: NextRequest) {
   const googleEvents: UnifiedEvent[] = [];
 
   if (!("error" in googleResult)) {
-    // Get calendar list for color mapping
-    const calListRes = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
-      headers: { Authorization: `Bearer ${session.accessToken}` },
-    });
+    // Get calendar list + user prefs for color/name/visibility
+    const [calListRes, prefsRes] = await Promise.all([
+      fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      }),
+      supa(`/user_google_cal_prefs?user_email=eq.${encodeURIComponent(email)}`),
+    ]);
     const calListData = calListRes.ok ? await calListRes.json() : { items: [] };
-    const calMap: Record<string, { name: string; color: string }> = {};
+    const prefs: Array<{ google_calendar_id: string; display_name?: string; color?: string; visible: boolean }> =
+      prefsRes.ok ? await prefsRes.json() : [];
+    const prefMap = new Map(prefs.map(p => [p.google_calendar_id, p]));
+
+    const calMap: Record<string, { name: string; color: string; visible: boolean }> = {};
     for (const cal of calListData.items ?? []) {
+      const pref = prefMap.get(cal.id);
       calMap[cal.id] = {
-        name: cal.summary ?? "Google Calendar",
-        color: cal.backgroundColor ?? "#f96400",
+        name: pref?.display_name ?? cal.summary ?? "Google Calendar",
+        color: pref?.color ?? cal.backgroundColor ?? "#4285F4",
+        visible: pref?.visible ?? true,
       };
     }
 
@@ -95,7 +104,9 @@ export async function GET(req: NextRequest) {
       const start = ev.start.dateTime ?? ev.start.date ?? "";
       const end = ev.end.dateTime ?? ev.end.date ?? "";
       const calId = ev.calendarId ?? "primary";
-      const calInfo = calMap[calId] ?? { name: "Google Calendar", color: "#4285F4" };
+      const calInfo = calMap[calId] ?? { name: "Google Calendar", color: "#4285F4", visible: true };
+      // Skip hidden calendars
+      if (!calInfo.visible) continue;
       googleEvents.push({
         id: `google::${ev.id}`,
         title: ev.summary || "Untitled",

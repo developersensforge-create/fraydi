@@ -15,7 +15,17 @@ interface CalendarSource {
   active: boolean
 }
 
-const COLOR_PRESETS = ['#f96400','#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899']
+interface GoogleCal {
+  id: string
+  summary: string
+  googleColor: string
+  primary: boolean
+  displayName: string
+  color: string
+  visible: boolean
+}
+
+const COLOR_PRESETS = ['#f96400','#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#4285F4','#0f9d58','#f4b400','#db4437']
 
 function formatRelativeTime(dateStr: string | null): string {
   if (!dateStr) return 'Never'
@@ -45,6 +55,13 @@ export default function CalendarsPage() {
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState('')
   const [showColorPicker, setShowColorPicker] = useState<string | null>(null)
+  // Google sub-calendars
+  const [googleCals, setGoogleCals] = useState<GoogleCal[]>([])
+  const [googleLoading, setGoogleLoading] = useState(true)
+  const [editingGoogleId, setEditingGoogleId] = useState<string | null>(null)
+  const [googleEditName, setGoogleEditName] = useState('')
+  const [googleEditColor, setGoogleEditColor] = useState('')
+  const [showGoogleColorPicker, setShowGoogleColorPicker] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -53,6 +70,7 @@ export default function CalendarsPage() {
   useEffect(() => {
     if (status !== 'authenticated') return
     fetchCalendars()
+    fetchGoogleCals()
   }, [status])
 
   async function fetchCalendars() {
@@ -64,6 +82,45 @@ export default function CalendarsPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function fetchGoogleCals() {
+    setGoogleLoading(true)
+    try {
+      const res = await fetch('/api/user/google-cals')
+      const data = await res.json()
+      if (data.calendars) setGoogleCals(data.calendars)
+    } finally {
+      setGoogleLoading(false)
+    }
+  }
+
+  async function saveGooglePref(cal: GoogleCal, patch: Partial<{ display_name: string; color: string; visible: boolean }>) {
+    // Optimistic update
+    setGoogleCals(prev => prev.map(c => c.id === cal.id ? {
+      ...c,
+      displayName: patch.display_name ?? c.displayName,
+      color: patch.color ?? c.color,
+      visible: patch.visible ?? c.visible,
+    } : c))
+    await fetch('/api/user/google-cals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_calendar_id: cal.id, ...patch }),
+    })
+  }
+
+  function startGoogleEdit(cal: GoogleCal) {
+    setEditingGoogleId(cal.id)
+    setGoogleEditName(cal.displayName)
+    setGoogleEditColor(cal.color)
+    setShowGoogleColorPicker(null)
+  }
+
+  async function saveGoogleEdit(cal: GoogleCal) {
+    await saveGooglePref(cal, { display_name: googleEditName.trim() || cal.summary, color: googleEditColor })
+    setEditingGoogleId(null)
+    setShowGoogleColorPicker(null)
   }
 
   function showStatus(type: 'success' | 'error', text: string) {
@@ -255,21 +312,88 @@ export default function CalendarsPage() {
           </div>
         )}
 
-        {/* Google Calendar auto-sync notice */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-            </svg>
+        {/* ── Google Calendars section ── */}
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-900">Google Calendar</p>
+              <p className="text-xs text-gray-400">Auto-synced · {googleCals.length} calendars</p>
+            </div>
+            <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-full">✅ Connected</span>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900">Google Calendar</p>
-            <p className="text-xs text-gray-400 mt-0.5">Auto-synced via your Google sign-in · All your Google calendars included</p>
-          </div>
-          <span className="flex-shrink-0 text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-full">✅ Connected</span>
+
+          {/* Sub-calendars */}
+          {googleLoading ? (
+            <div className="px-4 py-4 text-center text-xs text-gray-400">Loading calendars…</div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {googleCals.map(cal => (
+                <div key={cal.id} className={`px-4 py-3 transition-opacity ${cal.visible ? 'opacity-100' : 'opacity-40'}`}>
+                  {editingGoogleId === cal.id ? (
+                    <div className="flex items-center gap-3">
+                      {/* Color picker */}
+                      <div className="relative">
+                        <button onClick={() => setShowGoogleColorPicker(showGoogleColorPicker === cal.id ? null : cal.id)}
+                          className="w-8 h-8 rounded-full border-2 border-gray-300 hover:border-gray-500 transition-colors flex-shrink-0"
+                          style={{ backgroundColor: googleEditColor }} />
+                        {showGoogleColorPicker === cal.id && (
+                          <div className="absolute top-10 left-0 z-20 bg-white border border-gray-200 rounded-xl p-3 shadow-lg">
+                            <div className="flex gap-2 flex-wrap w-44">
+                              {COLOR_PRESETS.map(c => (
+                                <button key={c} onClick={() => { setGoogleEditColor(c); setShowGoogleColorPicker(null) }}
+                                  className={`w-7 h-7 rounded-full border-2 transition-transform ${googleEditColor === c ? 'border-gray-800 scale-110' : 'border-transparent'}`}
+                                  style={{ backgroundColor: c }} />
+                              ))}
+                            </div>
+                            <input type="color" value={googleEditColor} onChange={e => setGoogleEditColor(e.target.value)}
+                              className="mt-2 w-full h-7 rounded cursor-pointer" />
+                          </div>
+                        )}
+                      </div>
+                      <input type="text" value={googleEditName} onChange={e => setGoogleEditName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveGoogleEdit(cal); if (e.key === 'Escape') setEditingGoogleId(null) }}
+                        autoFocus
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      <button onClick={() => saveGoogleEdit(cal)}
+                        className="px-2.5 py-1 bg-[#f96400] text-white text-xs font-semibold rounded-lg">Save</button>
+                      <button onClick={() => { setEditingGoogleId(null); setShowGoogleColorPicker(null) }}
+                        className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg">Cancel</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cal.color }} />
+                      <span className="flex-1 text-sm text-gray-800 truncate">
+                        {cal.displayName}
+                        {cal.primary && <span className="ml-1 text-xs text-gray-400">(primary)</span>}
+                      </span>
+                      {/* Pencil edit */}
+                      <button onClick={() => startGoogleEdit(cal)}
+                        className="p-1.5 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors" title="Edit name & color">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      {/* Toggle visible */}
+                      <button onClick={() => saveGooglePref(cal, { visible: !cal.visible })}
+                        title={cal.visible ? 'Hide from dashboard' : 'Show on dashboard'}
+                        className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${cal.visible ? 'bg-[#f96400]' : 'bg-gray-200'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cal.visible ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Calendar list */}
@@ -349,7 +473,14 @@ export default function CalendarsPage() {
                         <span className="text-xs text-gray-400">Synced {formatRelativeTime(cal.last_synced_at)}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {/* ✏️ Edit pencil */}
+                      <button onClick={() => startEdit(cal)}
+                        className="p-1.5 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors" title="Edit name & color">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
                       {/* Toggle on/off */}
                       <button onClick={() => handleToggle(cal)} title={cal.active ? 'Hide from dashboard' : 'Show on dashboard'}
                         className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${cal.active ? 'bg-[#f96400]' : 'bg-gray-200'}`}>
