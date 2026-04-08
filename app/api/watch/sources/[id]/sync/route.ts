@@ -1,65 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/authOptions'
+import { createServerSupabase } from '@/lib/supabaseServer'
+import { scrapeEventsFromUrl } from '@/lib/aiScraper'
+import { resolveKeywords, syncIcal } from '@/lib/watchHelpers'
 
-const getSupabaseAdmin = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
-)
-
-// Simple iCal parser — no external deps
-function parseIcal(text: string): Array<{
-  title: string
-  start: string
-  end: string
-  description?: string
-  url?: string
-  location?: string
-}> {
-  const events: Array<{
-    title: string
-    start: string
-    end: string
-    description?: string
-    url?: string
-    location?: string
-  }> = []
-  const blocks = text.split('BEGIN:VEVENT')
-  for (const block of blocks.slice(1)) {
-    const get = (key: string): string => {
-      const match = block.match(new RegExp(key + '[^:]*:([^\\r\\n]+)'))
-      return match?.[1]?.trim() ?? ''
-    }
-
-    const parseIcalDate = (str: string): string => {
-      // Handle TZID format: 20260406T100000 or 20260406
-      const clean = str.replace(/[^0-9T]/g, '')
-      if (clean.length === 8) {
-        return `${clean.slice(0, 4)}-${clean.slice(4, 6)}-${clean.slice(6, 8)}`
-      }
-      return `${clean.slice(0, 4)}-${clean.slice(4, 6)}-${clean.slice(6, 8)}T${clean.slice(9, 11)}:${clean.slice(11, 13)}:${clean.slice(13, 15)}`
-    }
-
-    const summary = get('SUMMARY')
-    const dtstart = get('DTSTART')
-    if (!summary || !dtstart) continue
-
-    events.push({
-      title: summary,
-      start: parseIcalDate(dtstart),
-      end: parseIcalDate(get('DTEND') || dtstart),
-      description: get('DESCRIPTION') || undefined,
-      url: get('URL') || undefined,
-      location: get('LOCATION') || undefined,
-    })
+// POST /api/watch/sources/[id]/sync — manually re-sync a watch source
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return events
-}
+  const userEmail = session.user.email
 
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params
+  const db = createServerSupabase()
 
-  // Fetch the source record
-  const { data: source, error: srcError } = await getSupabaseAdmin()
+  const { data: source, error: srcError } = await db
     .from('watch_sources')
     .select('*')
     .eq('id', id)
@@ -69,52 +29,59 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Watch source not found' }, { status: 404 })
   }
 
-  if (source.type !== 'ical_url' || !source.url) {
-    return NextResponse.json({ error: 'Source is not an iCal URL type or has no URL' }, { status: 400 })
+  let events_found = 0
+  let events: unknown[] = []
+
+  if (source.type === 'url' && source.url) {
+    const keywords = await resolveKeywords(db, source.interest_keywords, source.family_id)
+    const scraped = await scrapeEventsFromUrl(source.url, keywords)
+
+    if (scraped.length > 0) {
+      await db.from('watch_events').delete().eq('watch_source_id', id)
+
+      const rows = scraped.map(e => ({
+        watch_source_id: id,
+        user_email: userEmail,
+        family_id: source.family_id,
+        title: e.title,
+        description: e.description ?? null,
+        event_date: e.event_date ?? null,
+        event_time: e.event_time ?? null,
+        location: e.location ?? null,
+        url: e.url ?? null,
+      }))
+
+      const { data: inserted } = await db.from('watch_events').insert(rows).select()
+      events_found = scraped.length
+      events = inserted ?? []
+    }
+
+    await db
+      .from('watch_sources')
+      .update({ last_synced_at: new Date().toISOString(), event_count: events_found })
+      .eq('id', id)
+  } else if (source.type === 'ical' && source.url) {
+    events_found = await syncIcal(
+      db,
+      { id, url: source.url },
+      userEmail,
+      source.family_id
+    )
+
+    if (events_found > 0) {
+      const { data: fetched } = await db
+        .from('watch_events')
+        .select('*')
+        .eq('watch_source_id', id)
+        .order('event_date', { ascending: true })
+      events = fetched ?? []
+    }
+  } else {
+    return NextResponse.json(
+      { error: 'Source has no URL or unsupported type' },
+      { status: 400 }
+    )
   }
 
-  // Fetch the iCal feed
-  let icalText: string
-  try {
-    const fetchUrl = source.url.replace(/^webcal:\/\//i, 'https://')
-    const res = await fetch(fetchUrl)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    icalText = await res.text()
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    return NextResponse.json({ error: `Failed to fetch iCal URL: ${message}` }, { status: 502 })
-  }
-
-  const parsed = parseIcal(icalText)
-  if (!parsed.length) {
-    return NextResponse.json({ synced: 0, message: 'No events found in iCal feed' })
-  }
-
-  // Upsert events into watch_events
-  const rows = parsed.map((e) => ({
-    family_id: source.family_id,
-    source_id: id,
-    title: e.title,
-    description: e.description ?? null,
-    start_time: e.start ? new Date(e.start).toISOString() : null,
-    end_time: e.end ? new Date(e.end).toISOString() : null,
-    location: e.location ?? null,
-    url: e.url ?? null,
-  }))
-
-  // Delete old events from this source, then insert fresh
-  await getSupabaseAdmin().from('watch_events').delete().eq('source_id', id)
-
-  const { error: insertError } = await getSupabaseAdmin().from('watch_events').insert(rows)
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 })
-  }
-
-  // Update last_synced_at on the source
-  await getSupabaseAdmin()
-    .from('watch_sources')
-    .update({ last_synced_at: new Date().toISOString() })
-    .eq('id', id)
-
-  return NextResponse.json({ synced: rows.length })
+  return NextResponse.json({ events_found, events })
 }

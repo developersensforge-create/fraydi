@@ -1,45 +1,122 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/authOptions'
+import { createServerSupabase } from '@/lib/supabaseServer'
+import { scrapeEventsFromUrl } from '@/lib/aiScraper'
+import { resolveKeywords, syncIcal } from '@/lib/watchHelpers'
 
-const getSupabaseAdmin = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
-)
+type SupabaseClient = ReturnType<typeof createServerSupabase>
 
-export async function GET(req: NextRequest) {
-  const family_id = req.nextUrl.searchParams.get('family_id')
-  if (!family_id) {
-    return NextResponse.json({ error: 'family_id required' }, { status: 400 })
+async function getOrCreateProfile(db: SupabaseClient, email: string) {
+  let { data: profile } = await db
+    .from('profiles')
+    .select('*')
+    .eq('email', email)
+    .single()
+
+  if (!profile) {
+    const { data: newProfile } = await db
+      .from('profiles')
+      .insert({ id: crypto.randomUUID(), email, role: 'member', color: '#f96400' })
+      .select()
+      .single()
+    profile = newProfile
+  }
+  return profile
+}
+
+// GET /api/watch/sources — list all watch sources for current user's family
+export async function GET(_req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data, error } = await getSupabaseAdmin()
+  const db = createServerSupabase()
+  const profile = await getOrCreateProfile(db, session.user.email)
+
+  if (!profile?.family_id) {
+    return NextResponse.json({ sources: [] })
+  }
+
+  const { data, error } = await db
     .from('watch_sources')
     .select('*')
-    .eq('family_id', family_id)
+    .eq('family_id', profile.family_id)
     .order('created_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ sources: data })
 }
 
+// POST /api/watch/sources — create a new watch source and trigger initial sync
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userEmail = session.user.email
+
   const body = await req.json()
-  const { family_id, profile_id, name, type, url, color } = body
+  const { name, url, type = 'url', color = '#6366f1', interest_keywords } = body
 
-  if (!family_id || !name || !type) {
-    return NextResponse.json({ error: 'family_id, name, and type are required' }, { status: 400 })
+  if (!name) {
+    return NextResponse.json({ error: 'name is required' }, { status: 400 })
   }
 
-  if (!['ical_url', 'manual'].includes(type)) {
-    return NextResponse.json({ error: 'type must be ical_url or manual' }, { status: 400 })
+  const db = createServerSupabase()
+  const profile = await getOrCreateProfile(db, userEmail)
+
+  if (!profile?.family_id) {
+    return NextResponse.json(
+      { error: 'No family found. Please create or join a family first.' },
+      { status: 400 }
+    )
   }
 
-  const { data, error } = await getSupabaseAdmin()
+  const { data: source, error } = await db
     .from('watch_sources')
-    .insert({ family_id, profile_id: profile_id ?? null, name, type, url: url ?? null, color: color ?? '#6366f1' })
+    .insert({
+      user_email: userEmail,
+      family_id: profile.family_id,
+      name,
+      url: url ?? null,
+      type,
+      color,
+      interest_keywords: interest_keywords ?? null,
+    })
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ source: data }, { status: 201 })
+
+  let events_found = 0
+
+  if (type === 'url' && url) {
+    const keywords = await resolveKeywords(db, interest_keywords, profile.family_id)
+    const scraped = await scrapeEventsFromUrl(url, keywords)
+    if (scraped.length > 0) {
+      const rows = scraped.map(e => ({
+        watch_source_id: source.id,
+        user_email: userEmail,
+        family_id: profile.family_id,
+        title: e.title,
+        description: e.description ?? null,
+        event_date: e.event_date ?? null,
+        event_time: e.event_time ?? null,
+        location: e.location ?? null,
+        url: e.url ?? null,
+      }))
+      await db.from('watch_events').insert(rows)
+      events_found = scraped.length
+    }
+    await db
+      .from('watch_sources')
+      .update({ last_synced_at: new Date().toISOString(), event_count: events_found })
+      .eq('id', source.id)
+  } else if (type === 'ical' && url) {
+    events_found = await syncIcal(db, { id: source.id, url }, userEmail, profile.family_id)
+  }
+
+  return NextResponse.json({ source, events_found }, { status: 201 })
 }
