@@ -1,6 +1,49 @@
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+async function upsertProfile(email: string, name: string, avatar: string) {
+  // Check if profile exists by email; create if not
+  try {
+    const checkRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+    );
+    const existing = checkRes.ok ? await checkRes.json() : [];
+    if (existing.length === 0) {
+      // Create new profile
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+        method: "POST",
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ email, full_name: name, avatar_url: avatar, role: "member" }),
+      });
+    } else {
+      // Update name/avatar
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ full_name: name, avatar_url: avatar }),
+        }
+      );
+    }
+  } catch (e) {
+    console.error("[authOptions] upsertProfile failed:", e);
+  }
+}
+
 async function refreshAccessToken(token: any) {
   try {
     const url = "https://oauth2.googleapis.com/token";
@@ -58,9 +101,17 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   callbacks: {
-    async jwt({ token, account }) {
-      // Initial sign-in — save all tokens
+    async jwt({ token, account, profile }) {
+      // Initial sign-in — save all tokens + upsert profile in Supabase
       if (account) {
+        // Create/update profile row so family API can look up by email
+        if (token.email) {
+          await upsertProfile(
+            token.email as string,
+            (token.name as string) ?? "",
+            (token.picture as string) ?? ""
+          );
+        }
         return {
           ...token,
           accessToken: account.access_token,
