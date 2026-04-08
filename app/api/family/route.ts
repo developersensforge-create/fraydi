@@ -13,15 +13,31 @@ export async function GET() {
 
     const db = createServerSupabase()
 
-    // Look up profile by email
-    const { data: profile, error: profileError } = await db
+    // Look up profile by email — auto-create if missing (handles existing Google sessions)
+    let { data: profile } = await db
       .from('profiles')
       .select('*')
       .eq('email', session.user.email)
       .single()
 
-    if (profileError || !profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!profile) {
+      const { data: newProfile } = await db
+        .from('profiles')
+        .insert({
+          id: crypto.randomUUID(),
+          email: session.user.email,
+          full_name: session.user.name ?? '',
+          avatar_url: session.user.image ?? '',
+          role: 'member',
+          color: '#f96400',
+        })
+        .select()
+        .single()
+      profile = newProfile
+    }
+
+    if (!profile) {
+      return NextResponse.json({ error: 'Could not create profile' }, { status: 500 })
     }
 
     if (!profile.family_id) {
@@ -78,15 +94,31 @@ export async function POST(request: NextRequest) {
 
     const db = createServerSupabase()
 
-    // Look up profile by email
-    const { data: profile, error: profileError } = await db
+    // Look up profile — auto-create if missing
+    let { data: profile } = await db
       .from('profiles')
       .select('*')
       .eq('email', session.user.email)
       .single()
 
-    if (profileError || !profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!profile) {
+      const { data: newProfile } = await db
+        .from('profiles')
+        .insert({
+          id: crypto.randomUUID(),
+          email: session.user.email,
+          full_name: session.user.name ?? '',
+          avatar_url: session.user.image ?? '',
+          role: 'member',
+          color: '#f96400',
+        })
+        .select()
+        .single()
+      profile = newProfile
+    }
+
+    if (!profile) {
+      return NextResponse.json({ error: 'Could not create profile' }, { status: 500 })
     }
 
     if (profile.family_id) {
