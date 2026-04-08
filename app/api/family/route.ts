@@ -70,7 +70,24 @@ export async function GET() {
       .eq('family_id', profile.family_id)
       .single()
 
-    return NextResponse.json({ family, members: members || [], kids: kids || [], subscription })
+    // Shape members for frontend: map full_name → name, add isSelf flag
+    const shapedMembers = (members || []).map(m => ({
+      id: m.id,
+      name: m.full_name || m.email || 'Unknown',
+      email: m.email,
+      role: m.role,
+      color: m.color || '#f96400',
+      avatar_url: m.avatar_url,
+      isSelf: m.email === session.user?.email,
+    }))
+
+    return NextResponse.json({
+      ...family,
+      invite_token: family?.invite_code, // alias so frontend works with both
+      members: shapedMembers,
+      kids: kids || [],
+      subscription,
+    })
   } catch (err) {
     console.error('[GET /api/family]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

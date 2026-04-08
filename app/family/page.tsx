@@ -252,47 +252,38 @@ export default function FamilyPage() {
                 </button>
               )}
 
-              {/* Invite link */}
-              {inviteToken && (
-                <div className="mt-4 flex flex-col sm:flex-row gap-3">
-                  <div className="flex items-center gap-2 flex-1 bg-gray-50 rounded-xl border border-gray-200 px-4 py-3">
-                    <span className="text-xs text-gray-400 flex-shrink-0">Invite:</span>
-                    <span className="text-xs font-mono text-gray-700 truncate flex-1">
-                      {typeof window !== 'undefined' ? `${window.location.origin}/join/${inviteToken}` : `/join/${inviteToken}`}
-                    </span>
-                    <button onClick={copyInviteLink} className="ml-auto text-lg hover:scale-110 transition-transform" title="Copy">
-                      {inviteCopied ? '✅' : '📋'}
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => setShowInviteInput(!showInviteInput)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold bg-[#f96400] text-white hover:bg-[#d95400] transition"
-                  >
-                    📨 Send invite
-                  </button>
-                </div>
-              )}
-
-              {/* Email invite input */}
-              {showInviteInput && (
-                <div className="mt-3 flex gap-2">
+              {/* Invite partner — always visible */}
+              <div className="mt-4 p-4 bg-orange-50 border border-orange-100 rounded-2xl">
+                <p className="text-sm font-semibold text-gray-800 mb-3">📨 Invite your partner</p>
+                <div className="flex gap-2 mb-3">
                   <input
                     type="email"
-                    placeholder="Partner's email"
+                    placeholder="Partner's email address"
                     value={inviteEmail}
                     onChange={e => setInviteEmail(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && sendInvite()}
-                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400] bg-white"
                   />
                   <button
                     onClick={sendInvite}
-                    disabled={sendingInvite}
-                    className="bg-[#f96400] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#d95400] transition disabled:opacity-60"
+                    disabled={sendingInvite || !inviteEmail.trim()}
+                    className="bg-[#f96400] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#d95400] transition disabled:opacity-50"
                   >
-                    {sendingInvite ? '...' : inviteSent ? '✅ Sent!' : 'Send'}
+                    {sendingInvite ? '...' : inviteSent ? '✅ Sent!' : 'Send invite'}
                   </button>
                 </div>
-              )}
+                {inviteToken && (
+                  <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 px-3 py-2">
+                    <span className="text-xs text-gray-400 flex-shrink-0">Or share link:</span>
+                    <span className="text-xs font-mono text-gray-600 truncate flex-1">
+                      {typeof window !== 'undefined' ? `${window.location.origin}/join/${inviteToken}` : `/join/${inviteToken}`}
+                    </span>
+                    <button onClick={copyInviteLink} className="text-base hover:scale-110 transition-transform flex-shrink-0" title="Copy link">
+                      {inviteCopied ? '✅' : '📋'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ── Members ── */}
