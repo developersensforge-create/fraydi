@@ -1,22 +1,14 @@
 {
   "functions": {
-    "app/api/user/calendars/route.ts": {
-      "maxDuration": 60
-    },
-    "app/api/user/events/route.ts": {
-      "maxDuration": 30
-    },
-    "app/api/sync/ical/route.ts": {
-      "maxDuration": 60
-    },
-    "app/api/cron/sync-ical/route.ts": {
-      "maxDuration": 300
-    }
+    "app/api/user/calendars/route.ts": { "maxDuration": 60 },
+    "app/api/user/events/route.ts": { "maxDuration": 30 },
+    "app/api/sync/ical/route.ts": { "maxDuration": 60 },
+    "app/api/cron/sync-ical/route.ts": { "maxDuration": 300 }
   },
   "crons": [
     {
       "path": "/api/cron/sync-ical",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 6 * * *"
     }
   ]
 }
