@@ -27,6 +27,31 @@ export default function OnboardingPage() {
     if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
+  // On load: check if user already has a family — skip to appropriate step
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    fetch('/api/family')
+      .then(r => r.json())
+      .then(data => {
+        if (data.family) {
+          // Already has a family — populate state and skip to step 2 or 3
+          setFamilyId(data.family.id)
+          setFamilyName(data.family.name)
+          const origin = window.location.origin
+          const token = data.family.invite_code || data.family.referral_code || ''
+          setInviteToken(token)
+          setInviteLink(token ? `${origin}/join/${token}` : `${origin}/join`)
+          // If they already have kids, skip straight to dashboard
+          if (data.kids && data.kids.length > 0) {
+            router.push('/dashboard')
+          } else {
+            setStep(2) // already have family, jump to invite step
+          }
+        }
+      })
+      .catch(() => {}) // ignore errors, stay on step 1
+  }, [status, router])
+
   // Step 1: Create family
   const createFamily = async () => {
     if (!familyName.trim()) { setError('Please enter a family name'); return }
