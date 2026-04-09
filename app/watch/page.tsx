@@ -237,7 +237,7 @@ function InterestsPanel() {
               )}
             </div>
 
-            {suggestions.length > 0 && keywords.length === 0 && (
+            {suggestions.length > 0 && (
               <div className="mt-3">
                 <p className="text-xs text-gray-400 mb-1.5">Suggestions:</p>
                 <div className="flex flex-wrap gap-1.5">
