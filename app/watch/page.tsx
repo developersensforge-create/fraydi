@@ -673,9 +673,15 @@ export default function WatchPage() {
             ) : sourcesError ? (
               <p className="text-sm text-red-500 px-4 py-4">{sourcesError}</p>
             ) : sources.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8 px-4">
-                No sources yet — add a website or URL to start monitoring.
-              </p>
+              <div className="flex flex-col items-center py-8 px-4 gap-3">
+                <p className="text-sm text-gray-400 text-center">No sources yet — add a website or URL to start monitoring.</p>
+                <button
+                  onClick={() => setShowAdd(true)}
+                  className="px-4 py-2 text-sm font-semibold bg-[#f96400] text-white rounded-xl hover:bg-[#d95400] transition-colors shadow-sm"
+                >
+                  + Add Source
+                </button>
+              </div>
             ) : (
               sources.map(s => (
                 <SourceCard
