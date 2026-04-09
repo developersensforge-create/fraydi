@@ -12,6 +12,7 @@ type FamilyMember = {
   name: string
   role: 'me' | 'spouse' | 'kid' | 'other'
   color: string
+  age?: number | null
   created_at: string
 }
 
@@ -160,10 +161,17 @@ function MemberRow({
         )}
       </div>
 
-      {/* Role badge */}
-      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">
-        {roleLabel(member.role)}
-      </span>
+      {/* Role badge + age for kids */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+          {roleLabel(member.role)}
+        </span>
+        {member.role === 'kid' && member.age != null && (
+          <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">
+            age {member.age}
+          </span>
+        )}
+      </div>
 
       {/* Color swatch */}
       <ColorSwatch
@@ -206,6 +214,7 @@ export default function FamilyPage() {
   // Add member state
   const [addingRole, setAddingRole] = useState<'spouse' | 'kid' | 'other' | null>(null)
   const [newMemberName, setNewMemberName] = useState('')
+  const [newMemberAge, setNewMemberAge] = useState('')
   const [savingMember, setSavingMember] = useState(false)
 
   const [notification, setNotification] = useState<string | null>(null)
@@ -308,7 +317,7 @@ export default function FamilyPage() {
       const res = await fetch('/api/family/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newMemberName.trim(), role: addingRole, color: '#6366f1' }),
+        body: JSON.stringify({ name: newMemberName.trim(), role: addingRole, color: '#6366f1', age: newMemberAge ? parseInt(newMemberAge) : undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to add member')
@@ -317,6 +326,7 @@ export default function FamilyPage() {
         family_members: [...(prev.family_members || []), data.member],
       } : prev)
       setNewMemberName('')
+      setNewMemberAge('')
       setAddingRole(null)
       showNotif(`${newMemberName} added!`)
     } catch (e: unknown) {
@@ -521,19 +531,30 @@ export default function FamilyPage() {
                   <p className="text-sm font-semibold text-gray-700 mb-3">
                     {roleEmoji(addingRole)} Add {addingRole}
                   </p>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <input
                       autoFocus
                       type="text"
-                      placeholder={`Name`}
+                      placeholder="Name"
                       value={newMemberName}
                       onChange={e => setNewMemberName(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === 'Enter') addMember()
-                        if (e.key === 'Escape') { setAddingRole(null); setNewMemberName('') }
+                        if (e.key === 'Escape') { setAddingRole(null); setNewMemberName(''); setNewMemberAge('') }
                       }}
-                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400] bg-white"
+                      className="flex-1 min-w-[120px] border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400] bg-white"
                     />
+                    {addingRole === 'kid' && (
+                      <input
+                        type="number"
+                        placeholder="Age"
+                        min={0} max={18}
+                        value={newMemberAge}
+                        onChange={e => setNewMemberAge(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') addMember() }}
+                        className="w-20 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400] bg-white"
+                      />
+                    )}
                     <button
                       onClick={addMember}
                       disabled={savingMember || !newMemberName.trim()}
@@ -542,7 +563,7 @@ export default function FamilyPage() {
                       {savingMember ? '...' : 'Add'}
                     </button>
                     <button
-                      onClick={() => { setAddingRole(null); setNewMemberName('') }}
+                      onClick={() => { setAddingRole(null); setNewMemberName(''); setNewMemberAge('') }}
                       className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50"
                     >
                       Cancel

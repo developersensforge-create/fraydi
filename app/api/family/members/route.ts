@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, role, color } = body
+    const { name, role, color, age } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         role,
         color: color || '#6366f1',
+        age: age != null ? parseInt(String(age)) : null,
       })
       .select()
       .single()
