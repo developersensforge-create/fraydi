@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabase } from '@/lib/supabaseServer'
 
 // PATCH /api/calendars/[id] — update fields (owner_type, owner_name, etc.)
 export async function PATCH(
@@ -22,9 +22,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const db = createServerSupabase()
+    const { data, error } = await db
       .from('calendar_sources')
-      .update(updates)
+      .update(updates as any)
       .eq('id', id)
       .select()
       .single()
@@ -50,7 +51,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Calendar source id is required' }, { status: 400 })
     }
 
-    const { error } = await supabase
+    const db = createServerSupabase()
+    const { error } = await db
       .from('calendar_sources')
       .delete()
       .eq('id', id)
