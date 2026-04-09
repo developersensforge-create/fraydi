@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
     days_of_week,
     time_of_day,
     family_member_id,
+    assignee_ids,
   } = body
 
   if (!title) {
@@ -85,6 +86,7 @@ export async function POST(req: NextRequest) {
     .insert({
       family_id,
       family_member_id: family_member_id ?? null,
+      assignee_ids: assignee_ids ?? [],
       title,
       description: description ?? null,
       type: type ?? 'habit',

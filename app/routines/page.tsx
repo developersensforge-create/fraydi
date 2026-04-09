@@ -17,6 +17,7 @@ type Routine = {
   days_of_week?: number[]
   time_of_day?: string
   active: boolean
+  assignee_ids?: string[]
   member?: { name: string; color: string; role: string }
 }
 
@@ -282,7 +283,7 @@ function HabitsSection() {
 
   // Add form state
   const [formTitle, setFormTitle] = useState('')
-  const [formMemberId, setFormMemberId] = useState<string>('')
+  const [formAssigneeIds, setFormAssigneeIds] = useState<string[]>([]) // empty = Everyone
   const [formFrequency, setFormFrequency] = useState<'daily' | 'weekly'>('daily')
   const [formDays, setFormDays] = useState<number[]>([1, 2, 3, 4, 5])
   const [formTime, setFormTime] = useState('08:00')
@@ -358,7 +359,8 @@ function HabitsSection() {
         frequency: formFrequency,
         time_of_day: formTime || undefined,
       }
-      if (formMemberId) body.family_member_id = formMemberId
+      if (formAssigneeIds.length > 0) body.assignee_ids = formAssigneeIds
+      else if (formAssigneeIds.length === 0) body.assignee_ids = [] // everyone
       if (formFrequency === 'weekly') body.days_of_week = formDays
 
       const res = await fetch('/api/routines', {
@@ -372,7 +374,7 @@ function HabitsSection() {
         const newHabit: Routine = created?.routine ?? created
         setHabits((prev) => [...prev, newHabit])
         setFormTitle('')
-        setFormMemberId('')
+        setFormAssigneeIds([])
         setFormFrequency('daily')
         setFormDays([1, 2, 3, 4, 5])
         setFormTime('08:00')
@@ -387,6 +389,10 @@ function HabitsSection() {
   }
 
   const getMemberName = (habit: Routine): string => {
+    if (habit.assignee_ids && habit.assignee_ids.length > 0) {
+      const names = habit.assignee_ids.map(id => members.find(m => m.id === id)?.name ?? '?')
+      return names.join(' & ')
+    }
     if (habit.member) return habit.member.name
     if (habit.family_member_id) {
       const m = members.find((m) => m.id === habit.family_member_id)
@@ -491,17 +497,33 @@ function HabitsSection() {
         {/* For / Frequency row */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">For</label>
-            <select
-              value={formMemberId}
-              onChange={(e) => setFormMemberId(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            >
-              <option value="">Everyone (family)</option>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Who's responsible
+              <span className="text-gray-400 font-normal ml-1">(select all that apply)</span>
+            </label>
+            <div className="border border-gray-200 rounded-lg bg-white divide-y divide-gray-100 overflow-hidden">
+              {/* Everyone option */}
+              <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 text-sm">
+                <input type="checkbox"
+                  checked={formAssigneeIds.length === 0}
+                  onChange={() => setFormAssigneeIds([])}
+                  className="rounded accent-[#f96400]" />
+                <span className="text-gray-700">Everyone (family)</span>
+              </label>
               {members.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <label key={m.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 text-sm">
+                  <input type="checkbox"
+                    checked={formAssigneeIds.includes(m.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) setFormAssigneeIds(prev => [...prev, m.id])
+                      else setFormAssigneeIds(prev => prev.filter(id => id !== m.id))
+                    }}
+                    className="rounded accent-[#f96400]" />
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: m.color }} />
+                  <span className="text-gray-700">{m.name}</span>
+                </label>
               ))}
-            </select>
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Frequency</label>
