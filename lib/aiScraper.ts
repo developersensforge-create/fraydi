@@ -9,6 +9,8 @@ export type ScrapedEvent = {
   event_time?: string  // e.g. "2:00 PM"
   location?: string
   url?: string
+  price?: string       // e.g. "Free", "$10", "$5–$15/session"
+  tags?: string[]      // e.g. ["kids", "outdoor", "free"]
   relevance_score?: number
 }
 
@@ -70,7 +72,7 @@ export async function scrapeEventsFromUrl(
           content:
             `You are an event extractor for a family calendar app. Extract all events, activities, programs, or classes from the provided webpage text. Focus on family-friendly events: kids activities, sports, community events, classes, festivals, workshops.` +
             keywordClause +
-            ` Return JSON array only. Each event: { title, description (brief), event_date (YYYY-MM-DD or null), event_time (e.g. "2:00 PM" or null), location (or null), url (if found, or null), relevance_score (1-5) }. If no events found, return []. Return only valid JSON, no markdown.`,
+            ` Return JSON array only. Each event: { title, description (brief, 1 sentence max), event_date (YYYY-MM-DD or null), event_time (e.g. "2:00 PM" or null), location (or null), url (if found, or null), price (e.g. "Free", "$10", "$5/session", or null if unknown), tags (array of 2-4 short lowercase keywords like ["kids","outdoor","free","sports"] or []), relevance_score (1-5) }. If no events found, return []. Return only valid JSON, no markdown.`,
         },
         {
           role: 'user',

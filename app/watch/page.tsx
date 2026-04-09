@@ -27,6 +27,8 @@ type WatchEvent = {
   event_time?: string
   location?: string
   url?: string
+  price?: string
+  tags?: string[]
   interest_level: 'watch' | 'interested' | 'hot'
   added_to_calendar: boolean
   source?: { name: string; color: string }
@@ -465,8 +467,33 @@ function EventCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-gray-900 leading-snug">{event.title}</p>
-          {dateStr && <p className="text-xs text-gray-500 mt-0.5">🗓 {dateStr}</p>}
-          {event.location && <p className="text-xs text-gray-500">📍 {event.location}</p>}
+
+          {/* Time — most important */}
+          {dateStr
+            ? <p className="text-xs font-semibold text-[#f96400] mt-1">🕐 {dateStr}</p>
+            : <p className="text-xs text-gray-400 mt-1">🕐 Date TBD</p>
+          }
+
+          {/* Price */}
+          {event.price && (
+            <p className="text-xs text-gray-600 mt-0.5">
+              💰 {event.price}
+            </p>
+          )}
+
+          {/* Location */}
+          {event.location && <p className="text-xs text-gray-500 mt-0.5">📍 {event.location}</p>}
+
+          {/* Tags */}
+          {event.tags && event.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {event.tags.map(tag => (
+                <span key={tag} className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{tag}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Source */}
           {event.source && (
             <div className="flex items-center gap-1 mt-1.5">
               <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} />

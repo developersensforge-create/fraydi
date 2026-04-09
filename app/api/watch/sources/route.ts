@@ -106,6 +106,8 @@ export async function POST(req: NextRequest) {
             event_time: e.event_time ?? null,
             location: e.location ?? null,
             url: e.url ?? null,
+            price: e.price ?? null,
+            tags: e.tags ?? [],
           }))
           db.from('watch_events').insert(rows).then(() =>
             db.from('watch_sources').update({ last_synced_at: new Date().toISOString(), event_count: scraped.length }).eq('id', source.id)

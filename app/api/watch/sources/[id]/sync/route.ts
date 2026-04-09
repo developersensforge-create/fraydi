@@ -49,6 +49,8 @@ export async function POST(
         event_time: e.event_time ?? null,
         location: e.location ?? null,
         url: e.url ?? null,
+        price: e.price ?? null,
+        tags: e.tags ?? [],
       }))
 
       const { data: inserted } = await db.from('watch_events').insert(rows).select()
