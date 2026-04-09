@@ -525,7 +525,8 @@ export default function WatchPage() {
     try {
       const res = await fetch('/api/watch/sources')
       if (!res.ok) throw new Error('Failed to load sources')
-      setSources(await res.json())
+      const data = await res.json()
+      setSources(Array.isArray(data) ? data : (data.sources ?? []))
     } catch {
       setSourcesError('Could not load sources.')
     } finally {
@@ -540,7 +541,8 @@ export default function WatchPage() {
     try {
       const res = await fetch('/api/watch/events')
       if (!res.ok) throw new Error('Failed to load events')
-      setEvents(await res.json())
+      const data = await res.json()
+      setEvents(Array.isArray(data) ? data : (data.events ?? []))
     } catch {
       setEventsError('Could not load events.')
     } finally {
