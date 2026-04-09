@@ -70,6 +70,40 @@ export async function GET() {
       .eq('family_id', profile.family_id)
       .single()
 
+    // Fetch family_members
+    let { data: familyMembers } = await db
+      .from('family_members')
+      .select('*')
+      .eq('family_id', profile.family_id)
+      .order('created_at', { ascending: true })
+
+    // Auto-seed family_members if empty
+    if ((!familyMembers || familyMembers.length === 0) && profile.family_id) {
+      // Add 'me' from profile
+      await db.from('family_members').insert({
+        family_id: profile.family_id,
+        name: profile.full_name || session.user?.name || 'Me',
+        role: 'me',
+        color: profile.color || '#f96400',
+      })
+      // Add kids
+      for (const kid of (kids || [])) {
+        await db.from('family_members').insert({
+          family_id: profile.family_id,
+          name: kid.name,
+          role: 'kid',
+          color: kid.color || '#8b5cf6',
+        })
+      }
+      // Re-fetch
+      const { data: seeded } = await db
+        .from('family_members')
+        .select('*')
+        .eq('family_id', profile.family_id)
+        .order('created_at', { ascending: true })
+      familyMembers = seeded || []
+    }
+
     // Shape members for frontend: map full_name → name, add isSelf flag
     const shapedMembers = (members || []).map(m => ({
       id: m.id,
@@ -86,6 +120,7 @@ export async function GET() {
       invite_token: family?.invite_code, // alias so frontend works with both
       members: shapedMembers,
       kids: kids || [],
+      family_members: familyMembers || [],
       subscription,
     })
   } catch (err) {
