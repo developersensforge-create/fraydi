@@ -115,6 +115,38 @@ function GearSection() {
   const [gear, setGear] = useState<GearSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [addingFor, setAddingFor] = useState<string | null>(null) // member id
+  const [newItemName, setNewItemName] = useState('')
+  const [newItemDesc, setNewItemDesc] = useState('')
+  const [newItemExternal, setNewItemExternal] = useState(false)
+  const [savingItem, setSavingItem] = useState(false)
+
+  const addItem = async (memberId: string) => {
+    if (!newItemName.trim()) return
+    setSavingItem(true)
+    try {
+      const res = await fetch(`/api/family/members/${memberId}/equipment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newItemName.trim(), description: newItemDesc.trim() || undefined, remind_external_only: newItemExternal }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setGear(prev => prev.map(g => g.member.id === memberId
+        ? { ...g, equipment: [...g.equipment, data.item] }
+        : g))
+      setNewItemName(''); setNewItemDesc(''); setNewItemExternal(false); setAddingFor(null)
+    } catch { /* silent */ } finally { setSavingItem(false) }
+  }
+
+  const removeItem = async (memberId: string, itemId: string) => {
+    try {
+      await fetch(`/api/family/members/${memberId}/equipment/${itemId}`, { method: 'DELETE' })
+      setGear(prev => prev.map(g => g.member.id === memberId
+        ? { ...g, equipment: g.equipment.filter(e => e.id !== itemId) }
+        : g))
+    } catch { /* silent */ }
+  }
 
   useEffect(() => {
     fetch('/api/routines/gear-summary')
@@ -142,10 +174,7 @@ function GearSection() {
         </div>
       ) : gear.length === 0 ? (
         <div className="px-5 py-8 text-center">
-          <p className="text-sm text-gray-400">No gear reminders set up yet.</p>
-          <Link href="/family" className="text-sm text-[#f96400] font-medium mt-2 inline-block hover:underline">
-            Manage gear →
-          </Link>
+          <p className="text-sm text-gray-400">No gear set up yet — go to the Family page to add members first.</p>
         </div>
       ) : (
         <div className="divide-y divide-gray-100">
@@ -173,33 +202,70 @@ function GearSection() {
 
                 {/* Equipment list */}
                 {isOpen && (
-                  <ul className="px-5 pb-3 space-y-2">
-                    {entry.equipment.map((item) => (
-                      <li key={item.id} className="flex items-start gap-2">
-                        <span className="text-gray-400 mt-0.5 flex-shrink-0">•</span>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm text-gray-800 font-medium">{item.name}</span>
-                          {item.description && (
-                            <span className="text-xs text-gray-500"> — {item.description}</span>
-                          )}
-                          {item.remind_external_only && (
-                            <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md">
-                              ⚠️ External help only
-                            </span>
-                          )}
+                  <div className="px-5 pb-3">
+                    <ul className="space-y-2 mb-3">
+                      {entry.equipment.map((item) => (
+                        <li key={item.id} className="flex items-start gap-2 group">
+                          <span className="text-gray-400 mt-0.5 flex-shrink-0">•</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm text-gray-800 font-medium">{item.name}</span>
+                            {item.description && (
+                              <span className="text-xs text-gray-500"> — {item.description}</span>
+                            )}
+                            {item.remind_external_only && (
+                              <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                                ⚠️ External help only
+                              </span>
+                            )}
+                          </div>
+                          <button onClick={() => removeItem(entry.member.id, item.id)}
+                            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition text-xs flex-shrink-0">✕</button>
+                        </li>
+                      ))}
+                      {entry.equipment.length === 0 && (
+                        <li className="text-xs text-gray-400 italic">No gear added yet</li>
+                      )}
+                    </ul>
+                    {/* Inline add form */}
+                    {addingFor === entry.member.id ? (
+                      <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                        <input autoFocus type="text" placeholder="Item name (e.g. Baseball bag)"
+                          value={newItemName} onChange={e => setNewItemName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') addItem(entry.member.id); if (e.key === 'Escape') setAddingFor(null) }}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400] bg-white" />
+                        <textarea placeholder="Description (optional)" rows={2}
+                          value={newItemDesc} onChange={e => setNewItemDesc(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400] bg-white resize-none" />
+                        <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                          <input type="checkbox" checked={newItemExternal} onChange={e => setNewItemExternal(e.target.checked)}
+                            className="rounded" />
+                          Only remind when outside help is involved
+                        </label>
+                        <div className="flex gap-2">
+                          <button onClick={() => addItem(entry.member.id)} disabled={savingItem || !newItemName.trim()}
+                            className="px-3 py-1.5 bg-[#f96400] text-white text-xs font-semibold rounded-lg hover:bg-[#d95400] disabled:opacity-50 transition">
+                            {savingItem ? '...' : 'Add'}
+                          </button>
+                          <button onClick={() => { setAddingFor(null); setNewItemName(''); setNewItemDesc('') }}
+                            className="px-3 py-1.5 border border-gray-200 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition">
+                            Cancel
+                          </button>
                         </div>
-                      </li>
-                    ))}
-                  </ul>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setAddingFor(entry.member.id); setNewItemName(''); setNewItemDesc(''); setNewItemExternal(false) }}
+                        className="text-xs text-[#f96400] font-medium hover:underline">
+                        + Add item for {entry.member.name}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )
           })}
 
-          <div className="px-5 py-3">
-            <Link href="/family" className="text-sm text-[#f96400] font-medium hover:underline">
-              Manage gear →
-            </Link>
+          <div className="px-5 py-3 border-t border-gray-100">
+            <p className="text-xs text-gray-400">Hover an item to delete it. Click "+ Add item" under any person to add gear.</p>
           </div>
         </div>
       )}
