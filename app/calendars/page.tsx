@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
@@ -13,6 +13,8 @@ interface CalendarSource {
   event_count: number
   ical_url: string
   active: boolean
+  owner_type?: string
+  owner_name?: string | null
 }
 
 interface GoogleCal {
@@ -23,6 +25,22 @@ interface GoogleCal {
   displayName: string
   color: string
   visible: boolean
+  owner_type?: string
+  owner_name?: string | null
+}
+
+type OwnerType = 'me' | 'spouse' | 'child' | 'shared' | 'other'
+
+const OWNER_OPTIONS: { value: OwnerType; label: string; emoji: string }[] = [
+  { value: 'me',     label: 'Me',     emoji: '👤' },
+  { value: 'spouse', label: 'Spouse', emoji: '💑' },
+  { value: 'child',  label: 'Kid',    emoji: '👦' },
+  { value: 'shared', label: 'Shared', emoji: '👨‍👩‍👧' },
+  { value: 'other',  label: 'Other',  emoji: '📅' },
+]
+
+function ownerOption(type?: string) {
+  return OWNER_OPTIONS.find(o => o.value === type) ?? OWNER_OPTIONS[0]
 }
 
 const COLOR_PRESETS = ['#f96400','#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#4285F4','#0f9d58','#f4b400','#db4437']
@@ -36,6 +54,115 @@ function formatRelativeTime(dateStr: string | null): string {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
+}
+
+/** Small inline owner badge + dropdown */
+function OwnerBadge({
+  ownerType,
+  ownerName,
+  onSave,
+}: {
+  ownerType?: string
+  ownerName?: string | null
+  onSave: (type: OwnerType, name?: string) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [pendingType, setPendingType] = useState<OwnerType | null>(null)
+  const [kidName, setKidName] = useState(ownerName ?? '')
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const current = ownerOption(ownerType)
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        setPendingType(null)
+      }
+    }
+    if (open) document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  async function selectOption(opt: typeof OWNER_OPTIONS[0]) {
+    if (opt.value === 'child') {
+      setPendingType('child')
+      setKidName(ownerName ?? '')
+      return
+    }
+    setSaving(true)
+    await onSave(opt.value)
+    setSaving(false)
+    setOpen(false)
+  }
+
+  async function saveKid() {
+    setSaving(true)
+    await onSave('child', kidName.trim() || undefined)
+    setSaving(false)
+    setOpen(false)
+    setPendingType(null)
+  }
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={() => { setOpen(o => !o); setPendingType(null) }}
+        disabled={saving}
+        className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs px-2 py-0.5 rounded-full transition-colors disabled:opacity-50"
+        title="Who owns this calendar?"
+      >
+        <span>{current.emoji}</span>
+        <span>{current.value === 'child' && ownerName ? ownerName : current.label}</span>
+        <svg className="w-2.5 h-2.5 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-30 bg-white border border-gray-200 rounded-xl shadow-lg min-w-[140px] py-1">
+          {pendingType === 'child' ? (
+            <div className="px-3 py-2 space-y-2">
+              <p className="text-xs font-medium text-gray-500">Kid&apos;s name</p>
+              <input
+                autoFocus
+                type="text"
+                value={kidName}
+                onChange={e => setKidName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveKid(); if (e.key === 'Escape') { setOpen(false); setPendingType(null) } }}
+                placeholder="e.g. Hunter"
+                className="w-full px-2 py-1 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+              <div className="flex gap-1.5">
+                <button onClick={saveKid} disabled={saving}
+                  className="flex-1 py-1 text-xs font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50">
+                  Save
+                </button>
+                <button onClick={() => setPendingType(null)}
+                  className="flex-1 py-1 text-xs font-semibold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : (
+            OWNER_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => selectOption(opt)}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors ${ownerType === opt.value ? 'font-semibold text-orange-600' : 'text-gray-700'}`}
+              >
+                <span>{opt.emoji}</span>
+                <span>{opt.label}</span>
+                {ownerType === opt.value && <span className="ml-auto text-orange-500">✓</span>}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function CalendarsPage() {
@@ -107,6 +234,26 @@ export default function CalendarsPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ google_calendar_id: cal.id, ...patch }),
+    })
+  }
+
+  async function saveGoogleOwner(cal: GoogleCal, owner_type: OwnerType, owner_name?: string) {
+    // Optimistic update
+    setGoogleCals(prev => prev.map(c => c.id === cal.id ? { ...c, owner_type, owner_name: owner_name ?? null } : c))
+    await fetch('/api/user/google-cals', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_calendar_id: cal.id, owner_type, owner_name: owner_name ?? null }),
+    })
+  }
+
+  async function saveICalOwner(cal: CalendarSource, owner_type: OwnerType, owner_name?: string) {
+    // Optimistic update
+    setCalendars(prev => prev.map(c => c.id === cal.id ? { ...c, owner_type, owner_name: owner_name ?? null } : c))
+    await fetch(`/api/calendars/${cal.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner_type, owner_name: owner_name ?? null }),
     })
   }
 
@@ -224,6 +371,16 @@ export default function CalendarsPage() {
     setEditingId(null)
     setShowColorPicker(null)
   }
+
+  // Build owner summary groups
+  const allCals = [
+    ...googleCals.map(c => ({ name: c.displayName, owner_type: c.owner_type ?? 'me', owner_name: c.owner_name })),
+    ...calendars.map(c => ({ name: c.name, owner_type: c.owner_type ?? 'me', owner_name: c.owner_name })),
+  ]
+  const ownerGroups = OWNER_OPTIONS.map(opt => ({
+    ...opt,
+    cals: allCals.filter(c => c.owner_type === opt.value),
+  }))
 
   if (status === 'loading') {
     return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-400 text-sm">Loading…</p></div>
@@ -375,6 +532,12 @@ export default function CalendarsPage() {
                         {cal.displayName}
                         {cal.primary && <span className="ml-1 text-xs text-gray-400">(primary)</span>}
                       </span>
+                      {/* Owner badge */}
+                      <OwnerBadge
+                        ownerType={cal.owner_type}
+                        ownerName={cal.owner_name}
+                        onSave={(type, name) => saveGoogleOwner(cal, type, name)}
+                      />
                       {/* Pencil edit */}
                       <button onClick={() => startGoogleEdit(cal)}
                         className="p-1.5 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors" title="Edit name & color">
@@ -474,6 +637,12 @@ export default function CalendarsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {/* Owner badge */}
+                      <OwnerBadge
+                        ownerType={cal.owner_type}
+                        ownerName={cal.owner_name}
+                        onSave={(type, name) => saveICalOwner(cal, type, name)}
+                      />
                       {/* ✏️ Edit pencil */}
                       <button onClick={() => startEdit(cal)}
                         className="p-1.5 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors" title="Edit name & color">
@@ -505,6 +674,32 @@ export default function CalendarsPage() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Owner summary */}
+        {(googleCals.length > 0 || calendars.length > 0) && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Calendar ownership</p>
+            <div className="space-y-1.5">
+              {ownerGroups.map(group => (
+                <div key={group.value} className="flex items-start gap-2 text-xs text-gray-600">
+                  <span className="flex-shrink-0 w-5 text-center">{group.emoji}</span>
+                  <span className="font-medium text-gray-500 w-12 flex-shrink-0">{group.label}:</span>
+                  {group.cals.length === 0 ? (
+                    <span className="text-gray-300 italic">none assigned</span>
+                  ) : (
+                    <span className="text-gray-700">
+                      {group.cals.map(c =>
+                        c.owner_type === 'child' && c.owner_name
+                          ? `${c.name} (${c.owner_name})`
+                          : c.name
+                      ).join(', ')}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

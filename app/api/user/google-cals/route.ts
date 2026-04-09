@@ -1,8 +1,9 @@
 /**
  * /api/user/google-cals
  * Manage per-user display preferences for Google Calendar sub-calendars.
- * GET  — list all Google calendars with user prefs merged in
- * POST — upsert prefs (display_name, color, visible) for a specific calendar
+ * GET   — list all Google calendars with user prefs merged in
+ * POST  — upsert prefs (display_name, color, visible) for a specific calendar
+ * PATCH — update owner_type / owner_name for a specific calendar
  */
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/authOptions";
@@ -39,7 +40,7 @@ export async function GET() {
 
   // Fetch stored prefs
   const pRes = await supa(`/user_google_cal_prefs?user_email=eq.${encodeURIComponent(email)}`);
-  const prefs: Array<{ google_calendar_id: string; display_name?: string; color?: string; visible: boolean }> =
+  const prefs: Array<{ google_calendar_id: string; display_name?: string; color?: string; visible: boolean; owner_type?: string; owner_name?: string }> =
     pRes.ok ? await pRes.json() : [];
   const prefMap = new Map(prefs.map(p => [p.google_calendar_id, p]));
 
@@ -55,6 +56,8 @@ export async function GET() {
       displayName: pref?.display_name ?? cal.summary,
       color: pref?.color ?? cal.backgroundColor ?? "#4285F4",
       visible: pref?.visible ?? true,
+      owner_type: pref?.owner_type ?? "me",
+      owner_name: pref?.owner_name ?? null,
     };
   });
 
@@ -73,6 +76,28 @@ export async function POST(req: NextRequest) {
   if (display_name !== undefined) payload.display_name = display_name;
   if (color !== undefined) payload.color = color;
   if (visible !== undefined) payload.visible = visible;
+
+  const res = await supa("/user_google_cal_prefs", {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return NextResponse.json({ error: await res.text() }, { status: 500 });
+  const [row] = await res.json();
+  return NextResponse.json({ pref: row });
+}
+
+// PATCH — update owner_type / owner_name for one Google calendar
+export async function PATCH(req: NextRequest) {
+  const session = await getServerSession(authOptions) as any;
+  if (!session?.user?.email) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  const email = session.user.email;
+  const { google_calendar_id, owner_type, owner_name } = await req.json();
+  if (!google_calendar_id) return NextResponse.json({ error: "google_calendar_id required" }, { status: 400 });
+
+  const payload: Record<string, unknown> = { user_email: email, google_calendar_id };
+  if (owner_type !== undefined) payload.owner_type = owner_type;
+  if (owner_name !== undefined) payload.owner_name = owner_name;
 
   const res = await supa("/user_google_cal_prefs", {
     method: "POST",
