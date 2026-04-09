@@ -1,426 +1,646 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import Navbar from '@/components/Navbar'
-import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 
-type RepeatType = 'daily' | 'weekly'
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Routine = {
   id: string
+  family_id: string
+  family_member_id?: string
   title: string
-  assigned: string
-  color: string
-  time: string
+  description?: string
+  type: 'habit' | 'gear' | 'checklist'
+  frequency: 'daily' | 'weekly' | 'before_event'
+  days_of_week?: number[]
+  time_of_day?: string
   active: boolean
-  repeat: RepeatType
-  days?: number[]
-  emoji?: string
+  member?: { name: string; color: string; role: string }
 }
 
-const MOCK_ROUTINES: Routine[] = [
-  { id: 'r1', title: 'Kids lunch box',  assigned: 'Dad',  color: '#3b82f6', time: '7:30am',  active: true,  repeat: 'daily',  emoji: '🧺' },
-  { id: 'r2', title: 'Grocery run',     assigned: 'Mom',  color: '#10b981', time: '10:00am', active: true,  repeat: 'weekly', days: [1, 3, 6], emoji: '🛒' },
-  { id: 'r3', title: 'Homework signup', assigned: 'Kids', color: '#8b5cf6', time: '8:00pm',  active: true,  repeat: 'daily',  emoji: '📚' },
-  { id: 'r4', title: 'Evening walk',    assigned: 'Everyone', color: '#f96400', time: '6:00pm', active: false, repeat: 'daily', emoji: '🚶' },
-]
+type GearSummary = {
+  member: { id: string; name: string; role: string; color: string }
+  equipment: Array<{
+    id: string
+    name: string
+    description?: string
+    remind_external_only: boolean
+  }>
+}
 
-const PEOPLE = ['Dad', 'Mom', 'Kids', 'Everyone']
+type FamilyMember = {
+  id: string
+  name: string
+  color: string
+  role: string
+}
+
+type TodayItem = {
+  id: string
+  title: string
+  type: 'habit' | 'gear'
+  member_name?: string
+  member_color?: string
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const DAY_FULL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const COLORS: Record<string, string> = {
-  Dad: '#3b82f6', Mom: '#10b981', Kids: '#8b5cf6', Everyone: '#f96400',
+
+function roleEmoji(role?: string): string {
+  if (!role) return '👤'
+  const r = role.toLowerCase()
+  if (r === 'child' || r === 'kid') return '👦'
+  if (r === 'parent' || r === 'adult') return '💑'
+  if (r === 'partner') return '💑'
+  return '👤'
 }
 
-type EditModalProps = {
-  routine: Routine
-  onClose: () => void
-  onSave: (r: Routine) => void
+function formatSchedule(routine: Routine): string {
+  const time = routine.time_of_day
+    ? ` at ${formatTime(routine.time_of_day)}`
+    : ''
+  if (routine.frequency === 'daily') return `Daily${time}`
+  if (routine.frequency === 'weekly') {
+    if (routine.days_of_week && routine.days_of_week.length > 0) {
+      const days = routine.days_of_week.map((d) => DAY_FULL[d]).join(', ')
+      return `Every ${days}${time}`
+    }
+    return `Weekly${time}`
+  }
+  if (routine.frequency === 'before_event') return `Before events${time}`
+  return ''
 }
 
-function EditModal({ routine, onClose, onSave }: EditModalProps) {
-  const [title, setTitle] = useState(routine.title)
-  const [assigned, setAssigned] = useState(routine.assigned)
-  const [repeat, setRepeat] = useState<RepeatType>(routine.repeat)
-  const [days, setDays] = useState<number[]>(routine.days ?? [1, 2, 3, 4, 5])
-  const [time, setTime] = useState(() => {
-    // Parse displayTime back to HH:MM
-    const match = routine.time.match(/(\d+):(\d+)(am|pm)/)
-    if (!match) return '07:00'
-    let h = parseInt(match[1])
-    const m = match[2]
-    const ampm = match[3]
-    if (ampm === 'pm' && h !== 12) h += 12
-    if (ampm === 'am' && h === 12) h = 0
-    return `${String(h).padStart(2, '0')}:${m}`
-  })
+function formatTime(t: string): string {
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr)
+  const m = mStr || '00'
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 || 12
+  return `${h12}:${m} ${ampm}`
+}
 
-  const toggleDay = (d: number) => {
-    setDays((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d])
-  }
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
-  const handleSave = () => {
-    if (!title.trim()) return
-    const [hRaw, mRaw] = time.split(':')
-    const h = parseInt(hRaw)
-    const m = mRaw || '00'
-    const ampm = h >= 12 ? 'pm' : 'am'
-    const h12 = h % 12 || 12
-    const displayTime = `${h12}:${m}${ampm}`
-    onSave({
-      ...routine,
-      title: title.trim(),
-      assigned,
-      color: COLORS[assigned] ?? '#f96400',
-      time: displayTime,
-      repeat,
-      days: repeat === 'weekly' ? days : undefined,
-    })
-  }
-
+function Skeleton({ className = '' }: { className?: string }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm border border-gray-200">
-        <div className="px-5 pt-5 pb-3 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-900">Edit Routine</h3>
+    <div className={`animate-pulse bg-gray-200 rounded-lg ${className}`} />
+  )
+}
+
+function SectionSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-3 p-4 border-b border-gray-100 last:border-0">
+          <Skeleton className="h-5 w-5 rounded-full" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-28" />
+          </div>
+          <Skeleton className="h-7 w-14" />
         </div>
-        <div className="px-5 py-4 space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Assigned to</label>
-            <select
-              value={assigned}
-              onChange={(e) => setAssigned(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            >
-              {PEOPLE.map((p) => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Repeat</label>
-            <select
-              value={repeat}
-              onChange={(e) => setRepeat(e.target.value as RepeatType)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-          </div>
-          {repeat === 'weekly' && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Days</label>
-              <div className="flex gap-1">
-                {DAY_LABELS.map((label, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => toggleDay(i)}
-                    className={`h-8 w-8 rounded-lg text-xs font-semibold transition-colors ${
-                      days.includes(i)
-                        ? 'bg-[#f96400] text-white'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                    title={DAY_FULL[i]}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Time</label>
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            />
-          </div>
-        </div>
-        <div className="px-5 pb-5 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 text-sm font-semibold bg-[#f96400] text-white rounded-lg hover:bg-[#d95400] transition-colors"
-          >
-            Save
-          </button>
-        </div>
-      </div>
+      ))}
     </div>
   )
 }
 
-function AddRoutineModal({ onClose, onAdd }: { onClose: () => void; onAdd: (r: Routine) => void }) {
-  const [title, setTitle] = useState('')
-  const [assigned, setAssigned] = useState(PEOPLE[0])
-  const [repeat, setRepeat] = useState<RepeatType>('daily')
-  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5])
-  const [time, setTime] = useState('07:30')
+// ─── Section: Gear Reminders ──────────────────────────────────────────────────
 
-  const toggleDay = (d: number) => {
-    setDays((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d])
-  }
+function GearSection() {
+  const [gear, setGear] = useState<GearSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
-  const handleSave = () => {
-    if (!title.trim()) return
-    const [hRaw, mRaw] = time.split(':')
-    const h = parseInt(hRaw)
-    const m = mRaw || '00'
-    const ampm = h >= 12 ? 'pm' : 'am'
-    const h12 = h % 12 || 12
-    const displayTime = `${h12}:${m}${ampm}`
-    onAdd({
-      id: `r-${Date.now()}`,
-      title: title.trim(),
-      assigned,
-      color: COLORS[assigned] ?? '#f96400',
-      time: displayTime,
-      active: true,
-      repeat,
-      days: repeat === 'weekly' ? days : undefined,
-    })
-    onClose()
+  useEffect(() => {
+    fetch('/api/routines/gear-summary')
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setGear(Array.isArray(data) ? data : data?.gear_summary ?? []))
+      .catch(() => setGear([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const toggleCollapse = (id: string) => {
+    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm border border-gray-200">
-        <div className="px-5 pt-5 pb-3 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-900">Add Routine</h3>
-        </div>
-        <div className="px-5 py-4 space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. School drop-off"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Assigned to</label>
-            <select
-              value={assigned}
-              onChange={(e) => setAssigned(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            >
-              {PEOPLE.map((p) => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Repeat</label>
-            <select
-              value={repeat}
-              onChange={(e) => setRepeat(e.target.value as RepeatType)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-          </div>
-          {repeat === 'weekly' && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Days</label>
-              <div className="flex gap-1">
-                {DAY_LABELS.map((label, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => toggleDay(i)}
-                    className={`h-8 w-8 rounded-lg text-xs font-semibold transition-colors ${
-                      days.includes(i)
-                        ? 'bg-[#f96400] text-white'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                    title={DAY_FULL[i]}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Time</label>
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
-            />
-          </div>
-        </div>
-        <div className="px-5 pb-5 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleSave} className="px-4 py-2 text-sm font-semibold bg-[#f96400] text-white rounded-lg hover:bg-[#d95400] transition-colors">
-            Save
-          </button>
-        </div>
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-100">
+        <h2 className="text-base font-bold text-gray-900">📦 Gear Reminders</h2>
+        <p className="text-xs text-gray-500 mt-0.5">What each family member needs for activities.</p>
       </div>
+
+      {loading ? (
+        <div className="p-4">
+          <SectionSkeleton />
+        </div>
+      ) : gear.length === 0 ? (
+        <div className="px-5 py-8 text-center">
+          <p className="text-sm text-gray-400">No gear reminders set up yet.</p>
+          <Link href="/family" className="text-sm text-[#f96400] font-medium mt-2 inline-block hover:underline">
+            Manage gear →
+          </Link>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {gear.map((entry) => {
+            const isOpen = !collapsed[entry.member.id]
+            return (
+              <div key={entry.member.id}>
+                {/* Member header — clickable to collapse */}
+                <button
+                  type="button"
+                  onClick={() => toggleCollapse(entry.member.id)}
+                  className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{roleEmoji(entry.member.role)}</span>
+                    <span className="font-semibold text-sm text-gray-900">{entry.member.name}</span>
+                    <span
+                      className="inline-block w-2 h-2 rounded-full"
+                      style={{ backgroundColor: entry.member.color || '#f96400' }}
+                    />
+                    <span className="text-xs text-gray-400">({entry.equipment.length} item{entry.equipment.length !== 1 ? 's' : ''})</span>
+                  </div>
+                  <span className="text-gray-400 text-xs">{isOpen ? '▲' : '▼'}</span>
+                </button>
+
+                {/* Equipment list */}
+                {isOpen && (
+                  <ul className="px-5 pb-3 space-y-2">
+                    {entry.equipment.map((item) => (
+                      <li key={item.id} className="flex items-start gap-2">
+                        <span className="text-gray-400 mt-0.5 flex-shrink-0">•</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-800 font-medium">{item.name}</span>
+                          {item.description && (
+                            <span className="text-xs text-gray-500"> — {item.description}</span>
+                          )}
+                          {item.remind_external_only && (
+                            <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                              ⚠️ External help only
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
+
+          <div className="px-5 py-3">
+            <Link href="/family" className="text-sm text-[#f96400] font-medium hover:underline">
+              Manage gear →
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-export default function RoutinesPage() {
-  const [routines, setRoutines] = useState<Routine[]>(MOCK_ROUTINES)
-  const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null)
-  const [showAdd, setShowAdd] = useState(false)
+// ─── Section: Recurring Habits ────────────────────────────────────────────────
 
-  const toggleActive = (id: string) => {
-    setRoutines((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, active: !r.active } : r))
+function HabitsSection() {
+  const [habits, setHabits] = useState<Routine[]>([])
+  const [loading, setLoading] = useState(true)
+  const [members, setMembers] = useState<FamilyMember[]>([])
+
+  // Add form state
+  const [formTitle, setFormTitle] = useState('')
+  const [formMemberId, setFormMemberId] = useState<string>('')
+  const [formFrequency, setFormFrequency] = useState<'daily' | 'weekly'>('daily')
+  const [formDays, setFormDays] = useState<number[]>([1, 2, 3, 4, 5])
+  const [formTime, setFormTime] = useState('08:00')
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/routines').then((r) => r.ok ? r.json() : []),
+      fetch('/api/family').then((r) => r.ok ? r.json() : { family_members: [] }),
+    ])
+      .then(([routinesData, familyData]) => {
+        const allRoutines: Routine[] = Array.isArray(routinesData)
+          ? routinesData
+          : routinesData?.routines ?? []
+        setHabits(allRoutines.filter((r) => !r.type || r.type === 'habit'))
+
+        const memberList: FamilyMember[] = Array.isArray(familyData)
+          ? familyData
+          : familyData?.family_members ?? familyData?.members ?? []
+        setMembers(memberList)
+      })
+      .catch(() => {
+        setHabits([])
+        setMembers([])
+      })
+      .finally(() => setLoading(false))
+  }, [])
+
+  const toggleActive = useCallback(async (habit: Routine) => {
+    const optimistic = habits.map((h) =>
+      h.id === habit.id ? { ...h, active: !h.active } : h
+    )
+    setHabits(optimistic)
+    try {
+      await fetch(`/api/routines/${habit.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !habit.active }),
+      })
+    } catch {
+      // Revert on error
+      setHabits(habits)
+    }
+  }, [habits])
+
+  const deleteHabit = useCallback(async (id: string) => {
+    setHabits((prev) => prev.filter((h) => h.id !== id))
+    try {
+      await fetch(`/api/routines/${id}`, { method: 'DELETE' })
+    } catch {
+      // noop — optimistic delete
+    }
+  }, [])
+
+  const toggleDay = (d: number) => {
+    setFormDays((prev) =>
+      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
     )
   }
 
-  const deleteRoutine = (id: string) => {
-    setRoutines((prev) => prev.filter((r) => r.id !== id))
+  const handleAdd = async () => {
+    if (!formTitle.trim()) {
+      setFormError('Please enter a title.')
+      return
+    }
+    setFormError('')
+    setSaving(true)
+    try {
+      const body: Record<string, unknown> = {
+        title: formTitle.trim(),
+        type: 'habit',
+        frequency: formFrequency,
+        time_of_day: formTime || undefined,
+      }
+      if (formMemberId) body.family_member_id = formMemberId
+      if (formFrequency === 'weekly') body.days_of_week = formDays
+
+      const res = await fetch('/api/routines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (res.ok) {
+        const created = await res.json()
+        const newHabit: Routine = created?.routine ?? created
+        setHabits((prev) => [...prev, newHabit])
+        setFormTitle('')
+        setFormMemberId('')
+        setFormFrequency('daily')
+        setFormDays([1, 2, 3, 4, 5])
+        setFormTime('08:00')
+      } else {
+        setFormError('Failed to add routine. Please try again.')
+      }
+    } catch {
+      setFormError('Network error. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const saveRoutine = (updated: Routine) => {
-    setRoutines((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
-    setEditingRoutine(null)
+  const getMemberName = (habit: Routine): string => {
+    if (habit.member) return habit.member.name
+    if (habit.family_member_id) {
+      const m = members.find((m) => m.id === habit.family_member_id)
+      return m?.name ?? 'Someone'
+    }
+    return 'Everyone'
   }
 
-  const addRoutine = (r: Routine) => {
-    setRoutines((prev) => [...prev, r])
+  const getMemberColor = (habit: Routine): string => {
+    if (habit.member?.color) return habit.member.color
+    if (habit.family_member_id) {
+      const m = members.find((m) => m.id === habit.family_member_id)
+      return m?.color ?? '#f96400'
+    }
+    return '#f96400'
   }
 
-  const daily = routines.filter((r) => r.repeat === 'daily')
-  const weekly = routines.filter((r) => r.repeat === 'weekly')
-
-  const RoutineRow = ({ routine }: { routine: Routine }) => (
-    <div className={`flex items-center gap-3 p-4 border-b border-gray-100 last:border-0 ${!routine.active ? 'opacity-50' : ''}`}>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-lg">{routine.emoji ?? '📋'}</span>
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-100">
+        <h2 className="text-base font-bold text-gray-900">🔁 Recurring Habits</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Standing reminders that repeat on a schedule.</p>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-gray-900">{routine.title}</p>
-          {!routine.active && (
-            <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">Paused</span>
-          )}
+
+      {/* Habit list */}
+      {loading ? (
+        <div className="p-4">
+          <SectionSkeleton />
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: routine.color }} />
-          <span className="text-xs text-gray-500">{routine.assigned}</span>
-          <span className="text-xs text-gray-400">· {routine.time}</span>
-          {routine.repeat === 'weekly' && routine.days && (
-            <span className="text-xs text-gray-400">
-              · {routine.days.map((d) => DAY_FULL[d]).join(', ')}
-            </span>
-          )}
+      ) : habits.length === 0 ? (
+        <div className="px-5 py-6 text-center">
+          <p className="text-sm text-gray-400">No habits yet — add your first routine below.</p>
         </div>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {habits.map((habit) => (
+            <div
+              key={habit.id}
+              className={`flex items-center gap-3 px-5 py-4 ${!habit.active ? 'opacity-50' : ''}`}
+            >
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-gray-900">{habit.title}</span>
+                  {!habit.active && (
+                    <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-md">
+                      Paused
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span
+                    className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: getMemberColor(habit) }}
+                  />
+                  <span className="text-xs text-gray-500">{getMemberName(habit)}</span>
+                  <span className="text-xs text-gray-400">· {formatSchedule(habit)}</span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => toggleActive(habit)}
+                  className={`text-xs px-2 py-1 rounded-lg border font-medium transition-colors ${
+                    habit.active
+                      ? 'border-green-200 text-green-700 bg-green-50 hover:bg-green-100'
+                      : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {habit.active ? 'On' : 'Off'}
+                </button>
+                <button
+                  onClick={() => deleteHabit(habit.id)}
+                  className="text-xs px-2 py-1 rounded-lg border border-red-100 text-red-400 hover:bg-red-50 transition-colors font-medium"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add habit form */}
+      <div className="border-t border-gray-100 px-5 py-4 bg-gray-50 space-y-3">
+        <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Add a habit</h3>
+
+        {/* Title */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+          <input
+            type="text"
+            value={formTitle}
+            onChange={(e) => setFormTitle(e.target.value)}
+            placeholder="e.g. Morning vitamins"
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+          />
+        </div>
+
+        {/* For / Frequency row */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">For</label>
+            <select
+              value={formMemberId}
+              onChange={(e) => setFormMemberId(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+            >
+              <option value="">Everyone (family)</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Frequency</label>
+            <select
+              value={formFrequency}
+              onChange={(e) => setFormFrequency(e.target.value as 'daily' | 'weekly')}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Day toggles (weekly only) */}
+        {formFrequency === 'weekly' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Days</label>
+            <div className="flex gap-1.5 flex-wrap">
+              {DAY_LABELS.map((label, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => toggleDay(i)}
+                  title={DAY_FULL[i]}
+                  className={`h-8 w-8 rounded-lg text-xs font-semibold transition-colors ${
+                    formDays.includes(i)
+                      ? 'bg-[#f96400] text-white'
+                      : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Time */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Time (optional)</label>
+          <input
+            type="time"
+            value={formTime}
+            onChange={(e) => setFormTime(e.target.value)}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+          />
+        </div>
+
+        {formError && (
+          <p className="text-xs text-red-500">{formError}</p>
+        )}
+
         <button
-          onClick={() => setEditingRoutine(routine)}
-          className="text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
+          onClick={handleAdd}
+          disabled={saving}
+          className="w-full py-2.5 text-sm font-semibold bg-[#f96400] text-white rounded-xl hover:bg-[#d95400] disabled:opacity-60 transition-colors"
         >
-          Edit
-        </button>
-        <button
-          onClick={() => toggleActive(routine.id)}
-          className={`text-xs px-2 py-1 rounded-lg border font-medium transition-colors ${
-            routine.active
-              ? 'border-green-200 text-green-700 bg-green-50 hover:bg-green-100'
-              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-          }`}
-        >
-          {routine.active ? 'Active' : 'Paused'}
-        </button>
-        <button
-          onClick={() => deleteRoutine(routine.id)}
-          className="text-xs px-2 py-1 rounded-lg border border-red-100 text-red-500 hover:bg-red-50 transition-colors font-medium"
-        >
-          Delete
+          {saving ? 'Adding…' : '+ Add routine'}
         </button>
       </div>
     </div>
   )
+}
 
+// ─── Section: Today's Checklist ───────────────────────────────────────────────
+
+function TodaySection() {
+  const [items, setItems] = useState<TodayItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [checked, setChecked] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    fetch('/api/routines/today')
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => {
+        const raw: TodayItem[] = Array.isArray(data)
+          ? data
+          : data?.items ?? data?.checklist ?? []
+        setItems(raw)
+      })
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const toggle = (id: string) => {
+    setChecked((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const habits = items.filter((i) => i.type !== 'gear')
+  const gear = items.filter((i) => i.type === 'gear')
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-100">
+        <h2 className="text-base font-bold text-gray-900">✅ Today&apos;s Checklist</h2>
+        <p className="text-xs text-gray-500 mt-0.5">What needs to happen today.</p>
+      </div>
+
+      {loading ? (
+        <div className="p-4">
+          <SectionSkeleton />
+        </div>
+      ) : items.length === 0 ? (
+        <div className="px-5 py-10 text-center">
+          <p className="text-sm text-gray-500">Nothing scheduled for today 🎉</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {/* Habits group */}
+          {habits.length > 0 && (
+            <div>
+              <p className="px-5 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">
+                Habits
+              </p>
+              {habits.map((item) => (
+                <ChecklistRow
+                  key={item.id}
+                  item={item}
+                  checked={!!checked[item.id]}
+                  onToggle={() => toggle(item.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Gear group */}
+          {gear.length > 0 && (
+            <div>
+              <p className="px-5 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">
+                Gear
+              </p>
+              {gear.map((item) => (
+                <ChecklistRow
+                  key={item.id}
+                  item={item}
+                  checked={!!checked[item.id]}
+                  onToggle={() => toggle(item.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ChecklistRow({
+  item,
+  checked,
+  onToggle,
+}: {
+  item: TodayItem
+  checked: boolean
+  onToggle: () => void
+}) {
+  return (
+    <label className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        className="w-4 h-4 rounded border-gray-300 text-[#f96400] accent-[#f96400] flex-shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <span className={`text-sm font-medium ${checked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+          {item.title}
+        </span>
+        {item.member_name && (
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span
+              className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+              style={{ backgroundColor: item.member_color || '#f96400' }}
+            />
+            <span className="text-xs text-gray-400">{item.member_name}</span>
+          </div>
+        )}
+      </div>
+    </label>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function RoutinesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">🔄 Family Routines</h1>
-            <p className="text-gray-500 mt-1 text-sm">Manage recurring tasks for your household.</p>
-          </div>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="px-4 py-2 text-sm font-semibold bg-[#f96400] text-white rounded-xl hover:bg-[#d95400] transition-colors shadow-sm"
-          >
-            + Add Routine
-          </button>
+      <main className="mx-auto max-w-2xl px-4 sm:px-6 py-8 space-y-6">
+        {/* Page header */}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Reminders &amp; Routines 🔔</h1>
+          <p className="text-gray-500 mt-1 text-sm">
+            Keep your family running smoothly — gear, habits, and event prep.
+          </p>
         </div>
 
-        <div className="space-y-4">
-          {/* Daily routines */}
-          <Card variant="bordered">
-            <CardHeader>
-              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                Daily ({daily.length})
-              </h2>
-            </CardHeader>
-            <CardBody className="!pt-0 !px-0">
-              {daily.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No daily routines yet.</p>
-              ) : (
-                daily.map((r) => <RoutineRow key={r.id} routine={r} />)
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Weekly routines */}
-          <Card variant="bordered">
-            <CardHeader>
-              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                Weekly ({weekly.length})
-              </h2>
-            </CardHeader>
-            <CardBody className="!pt-0 !px-0">
-              {weekly.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No weekly routines yet.</p>
-              ) : (
-                weekly.map((r) => <RoutineRow key={r.id} routine={r} />)
-              )}
-            </CardBody>
-          </Card>
-        </div>
+        {/* Three stacked sections */}
+        <GearSection />
+        <HabitsSection />
+        <TodaySection />
       </main>
-
-      {showAdd && (
-        <AddRoutineModal onClose={() => setShowAdd(false)} onAdd={addRoutine} />
-      )}
-      {editingRoutine && (
-        <EditModal
-          routine={editingRoutine}
-          onClose={() => setEditingRoutine(null)}
-          onSave={saveRoutine}
-        />
-      )}
     </div>
   )
 }

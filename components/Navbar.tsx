@@ -20,6 +20,7 @@ export default function Navbar() {
     { href: '/family', label: 'Family' },
     { href: '/dashboard', label: 'Tasks', scroll: false }, // Tasks are on dashboard sidebar
     { href: '/watch', label: 'Radar 📡' },
+    { href: '/routines', label: 'Routines 🔔' },
     ...(!isPro ? [{ href: '/upgrade', label: 'Upgrade' }] : []),
   ]
 
