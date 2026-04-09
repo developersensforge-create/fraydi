@@ -12,14 +12,28 @@ export type ScrapedEvent = {
   relevance_score?: number
 }
 
+/** Normalize known recreation site URL patterns to their best scrape-able endpoint */
+function normalizeUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    // myrec.com: activities.aspx is a JS shell — the list page is default.aspx?type=activities
+    if (u.hostname.includes('myrec.com') && u.pathname.includes('activities.aspx')) {
+      return `${u.origin}${u.pathname.replace('activities.aspx', 'default.aspx')}?type=activities`
+    }
+  } catch {}
+  return url
+}
+
 export async function scrapeEventsFromUrl(
   url: string,
   interestKeywords: string[] = []
 ): Promise<ScrapedEvent[]> {
+  const fetchUrl = normalizeUrl(url)
+
   // Step 1: Fetch the page content
   let pageText = ''
   try {
-    const res = await fetch(url, {
+    const res = await fetch(fetchUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fraydi/1.0)' },
       signal: AbortSignal.timeout(10000),
     })
