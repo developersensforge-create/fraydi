@@ -90,33 +90,32 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  let events_found = 0
-
+  // Fire-and-forget the scrape/sync — return immediately so UI doesn't time out
+  // The source will be synced in the background; user can hit "Sync now" to check results
   if (type === 'url' && url) {
-    const keywords = await resolveKeywords(db, interest_keywords, profile.family_id)
-    const scraped = await scrapeEventsFromUrl(url, keywords)
-    if (scraped.length > 0) {
-      const rows = scraped.map(e => ({
-        watch_source_id: source.id,
-        user_email: userEmail,
-        family_id: profile.family_id,
-        title: e.title,
-        description: e.description ?? null,
-        event_date: e.event_date ?? null,
-        event_time: e.event_time ?? null,
-        location: e.location ?? null,
-        url: e.url ?? null,
-      }))
-      await db.from('watch_events').insert(rows)
-      events_found = scraped.length
-    }
-    await db
-      .from('watch_sources')
-      .update({ last_synced_at: new Date().toISOString(), event_count: events_found })
-      .eq('id', source.id)
+    resolveKeywords(db, interest_keywords, profile.family_id).then(keywords =>
+      scrapeEventsFromUrl(url, keywords).then(scraped => {
+        if (scraped.length > 0) {
+          const rows = scraped.map(e => ({
+            watch_source_id: source.id,
+            user_email: userEmail,
+            family_id: profile.family_id,
+            title: e.title,
+            description: e.description ?? null,
+            event_date: e.event_date ?? null,
+            event_time: e.event_time ?? null,
+            location: e.location ?? null,
+            url: e.url ?? null,
+          }))
+          db.from('watch_events').insert(rows).then(() =>
+            db.from('watch_sources').update({ last_synced_at: new Date().toISOString(), event_count: scraped.length }).eq('id', source.id)
+          )
+        }
+      })
+    ).catch(() => {})
   } else if (type === 'ical' && url) {
-    events_found = await syncIcal(db, { id: source.id, url }, userEmail, profile.family_id)
+    syncIcal(db, { id: source.id, url }, userEmail, profile.family_id).catch(() => {})
   }
 
-  return NextResponse.json({ source, events_found }, { status: 201 })
+  return NextResponse.json({ source, events_found: 0, syncing: true }, { status: 201 })
 }

@@ -618,10 +618,11 @@ export default function WatchPage() {
   }
 
   // ── Handle source added ──
-  const handleSourceAdded = async (eventCount: number) => {
-    setToast(`✅ Syncing… found ${eventCount} event${eventCount !== 1 ? 's' : ''}`)
+  const handleSourceAdded = async (_eventCount: number) => {
+    setToast('✅ Source added — syncing in background. Hit "Sync now" in a moment to see events.')
     await fetchSources()
-    await fetchEvents()
+    // Wait 3s then refresh events (background scrape may be done)
+    setTimeout(async () => { await fetchEvents() }, 3000)
   }
 
   // ── Filtered events ──
