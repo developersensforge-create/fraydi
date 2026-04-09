@@ -39,6 +39,15 @@ type FamilyData = {
   family_members: FamilyMember[]
 }
 
+type EquipmentItem = {
+  id: string
+  family_member_id: string
+  name: string
+  description?: string
+  remind_external_only: boolean
+  created_at: string
+}
+
 const COLOR_PRESETS = ['#f96400', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899']
 
 function roleEmoji(role: string) {
@@ -103,16 +112,282 @@ function ColorSwatch({
   )
 }
 
+// ── Equipment Panel ──────────────────────────────────────────────────────────
+
+function EquipmentItemRow({
+  item,
+  memberId,
+  onUpdate,
+  onDelete,
+}: {
+  item: EquipmentItem
+  memberId: string
+  onUpdate: (updated: EquipmentItem) => void
+  onDelete: (id: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(item.name)
+  const [editDesc, setEditDesc] = useState(item.description ?? '')
+  const [editExternal, setEditExternal] = useState(item.remind_external_only)
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!editName.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/family/members/${memberId}/equipment/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName.trim(),
+          description: editDesc.trim() || null,
+          remind_external_only: editExternal,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update')
+      onUpdate(data.item)
+      setEditing(false)
+    } catch {
+      // silently fail — parent will show notif if needed
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function cancel() {
+    setEditName(item.name)
+    setEditDesc(item.description ?? '')
+    setEditExternal(item.remind_external_only)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div className="bg-white rounded-lg px-3 py-2.5 border border-gray-200 flex flex-col gap-2">
+        <input
+          autoFocus
+          value={editName}
+          onChange={e => setEditName(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') cancel()
+          }}
+          className="text-sm font-semibold text-gray-900 border-b border-gray-200 focus:outline-none focus:border-[#f96400] bg-transparent pb-0.5 w-full"
+          placeholder="Item name"
+          disabled={saving}
+        />
+        <textarea
+          value={editDesc}
+          onChange={e => setEditDesc(e.target.value)}
+          rows={2}
+          className="text-xs text-gray-500 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#f96400] resize-none bg-white w-full"
+          placeholder="Description (optional)"
+          disabled={saving}
+        />
+        <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={editExternal}
+            onChange={e => setEditExternal(e.target.checked)}
+            className="rounded text-[#f96400] focus:ring-[#f96400]"
+            disabled={saving}
+          />
+          Only remind when outside help involved
+        </label>
+        <div className="flex gap-2">
+          <button
+            onClick={save}
+            disabled={saving || !editName.trim()}
+            className="text-xs text-[#f96400] font-semibold hover:underline disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button onClick={cancel} className="text-xs text-gray-400 hover:text-gray-600">
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-lg px-3 py-2 flex items-start gap-2 group">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-sm font-semibold text-gray-800">{item.name}</span>
+          {item.remind_external_only && (
+            <span className="text-xs bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full">
+              ⚠️ external only
+            </span>
+          )}
+        </div>
+        {item.description && (
+          <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{item.description}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={() => setEditing(true)}
+          className="text-xs text-gray-400 hover:text-[#f96400] transition-colors"
+          title="Edit"
+        >
+          edit
+        </button>
+        <button
+          onClick={() => onDelete(item.id)}
+          className="text-gray-300 hover:text-red-400 transition-colors text-xs"
+          title="Remove"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AddEquipmentForm({
+  memberId,
+  onAdd,
+}: {
+  memberId: string
+  onAdd: (item: EquipmentItem) => void
+}) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [externalOnly, setExternalOnly] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  async function submit() {
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/family/members/${memberId}/equipment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || null,
+          remind_external_only: externalOnly,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to add')
+      onAdd(data.item)
+      setName('')
+      setDescription('')
+      setExternalOnly(false)
+      nameRef.current?.focus()
+    } catch {
+      // silently fail
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 pt-1">
+      <div className="flex gap-2">
+        <input
+          ref={nameRef}
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit() }}
+          placeholder="Item name"
+          className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400] bg-white"
+          disabled={saving}
+        />
+        <button
+          onClick={submit}
+          disabled={saving || !name.trim()}
+          className="bg-[#f96400] text-white px-3 py-2 rounded-xl text-sm font-semibold hover:bg-[#d95400] transition disabled:opacity-50 flex-shrink-0"
+        >
+          {saving ? '…' : '+ Add'}
+        </button>
+      </div>
+      <textarea
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        rows={2}
+        placeholder="Description (optional)"
+        className="border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#f96400] resize-none bg-white"
+        disabled={saving}
+      />
+      <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={externalOnly}
+          onChange={e => setExternalOnly(e.target.checked)}
+          className="rounded text-[#f96400] focus:ring-[#f96400]"
+          disabled={saving}
+        />
+        Only remind when outside help is involved
+      </label>
+    </div>
+  )
+}
+
+function EquipmentPanel({
+  memberId,
+  items,
+  onUpdate,
+  onDelete,
+  onAdd,
+}: {
+  memberId: string
+  items: EquipmentItem[]
+  onUpdate: (item: EquipmentItem) => void
+  onDelete: (id: string) => void
+  onAdd: (item: EquipmentItem) => void
+}) {
+  return (
+    <div className="mt-1.5 bg-gray-50 rounded-xl border border-gray-100 px-3 py-3 flex flex-col gap-2">
+      {items.length === 0 ? (
+        <p className="text-xs text-gray-400 text-center py-1">No gear added yet — tap + Add item</p>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {items.map(item => (
+            <EquipmentItemRow
+              key={item.id}
+              item={item}
+              memberId={memberId}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      )}
+      <AddEquipmentForm memberId={memberId} onAdd={onAdd} />
+    </div>
+  )
+}
+
+// ── MemberRow ────────────────────────────────────────────────────────────────
+
 function MemberRow({
   member,
   onRename,
   onColorChange,
   onDelete,
+  equipmentExpanded,
+  onToggleEquipment,
+  equipmentItems,
+  onEquipmentAdd,
+  onEquipmentUpdate,
+  onEquipmentDelete,
 }: {
   member: FamilyMember
   onRename: (id: string, name: string) => Promise<void>
   onColorChange: (id: string, color: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  equipmentExpanded: boolean
+  onToggleEquipment: (id: string) => void
+  equipmentItems: EquipmentItem[] | undefined
+  onEquipmentAdd: (memberId: string, item: EquipmentItem) => void
+  onEquipmentUpdate: (memberId: string, item: EquipmentItem) => void
+  onEquipmentDelete: (memberId: string, itemId: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [nameVal, setNameVal] = useState(member.name)
@@ -131,63 +406,89 @@ function MemberRow({
   }
 
   return (
-    <div className="flex items-center gap-3 py-2.5 px-4 bg-white rounded-xl border border-gray-100 hover:border-gray-200 transition-colors">
-      {/* Role emoji */}
-      <span className="text-xl flex-shrink-0">{roleEmoji(member.role)}</span>
+    <div>
+      <div className="flex items-center gap-3 py-2.5 px-4 bg-white rounded-xl border border-gray-100 hover:border-gray-200 transition-colors">
+        {/* Role emoji */}
+        <span className="text-xl flex-shrink-0">{roleEmoji(member.role)}</span>
 
-      {/* Name — inline editable */}
-      <div className="flex-1 min-w-0">
-        {editing ? (
-          <input
-            autoFocus
-            value={nameVal}
-            onChange={e => setNameVal(e.target.value)}
-            onBlur={save}
-            onKeyDown={e => {
-              if (e.key === 'Enter') save()
-              if (e.key === 'Escape') { setEditing(false); setNameVal(member.name) }
-            }}
-            className="text-sm font-semibold text-gray-900 border-b-2 border-[#f96400] focus:outline-none bg-transparent pb-0.5 w-full"
-            disabled={saving}
-          />
-        ) : (
+        {/* Name — inline editable */}
+        <div className="flex-1 min-w-0">
+          {editing ? (
+            <input
+              autoFocus
+              value={nameVal}
+              onChange={e => setNameVal(e.target.value)}
+              onBlur={save}
+              onKeyDown={e => {
+                if (e.key === 'Enter') save()
+                if (e.key === 'Escape') { setEditing(false); setNameVal(member.name) }
+              }}
+              className="text-sm font-semibold text-gray-900 border-b-2 border-[#f96400] focus:outline-none bg-transparent pb-0.5 w-full"
+              disabled={saving}
+            />
+          ) : (
+            <button
+              onClick={() => setEditing(true)}
+              className="text-sm font-semibold text-gray-900 hover:text-[#f96400] transition-colors text-left truncate w-full"
+              title="Click to edit name"
+            >
+              {member.name}
+            </button>
+          )}
+        </div>
+
+        {/* Role badge + age for kids */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            {roleLabel(member.role)}
+          </span>
+          {member.role === 'kid' && member.age != null && (
+            <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">
+              age {member.age}
+            </span>
+          )}
+        </div>
+
+        {/* Color swatch */}
+        <ColorSwatch
+          color={member.color}
+          onChange={(c) => onColorChange(member.id, c)}
+        />
+
+        {/* Gear toggle button */}
+        <button
+          onClick={() => onToggleEquipment(member.id)}
+          className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors flex-shrink-0 ${
+            equipmentExpanded
+              ? 'bg-gray-100 border-gray-200 text-gray-600'
+              : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600'
+          }`}
+          title="Toggle gear"
+        >
+          📦 <span className="hidden sm:inline">gear</span> {equipmentExpanded ? '▴' : '▾'}
+        </button>
+
+        {/* Delete (not for 'me') */}
+        {member.role !== 'me' && (
           <button
-            onClick={() => setEditing(true)}
-            className="text-sm font-semibold text-gray-900 hover:text-[#f96400] transition-colors text-left truncate w-full"
-            title="Click to edit name"
+            onClick={() => onDelete(member.id)}
+            className="text-gray-300 hover:text-red-400 transition-colors text-sm flex-shrink-0"
+            title="Remove"
           >
-            {member.name}
+            ✕
           </button>
         )}
       </div>
 
-      {/* Role badge + age for kids */}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-          {roleLabel(member.role)}
-        </span>
-        {member.role === 'kid' && member.age != null && (
-          <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">
-            age {member.age}
-          </span>
-        )}
-      </div>
-
-      {/* Color swatch */}
-      <ColorSwatch
-        color={member.color}
-        onChange={(c) => onColorChange(member.id, c)}
-      />
-
-      {/* Delete (not for 'me') */}
-      {member.role !== 'me' && (
-        <button
-          onClick={() => onDelete(member.id)}
-          className="text-gray-300 hover:text-red-400 transition-colors text-sm flex-shrink-0"
-          title="Remove"
-        >
-          ✕
-        </button>
+      {/* Equipment panel */}
+      {equipmentExpanded && (
+        <EquipmentPanel
+          memberId={member.id}
+          items={equipmentItems ?? []}
+          onAdd={(item) => onEquipmentAdd(member.id, item)}
+          onUpdate={(item) => onEquipmentUpdate(member.id, item)}
+          onDelete={(itemId) => onEquipmentDelete(member.id, itemId)}
+        />
       )}
     </div>
   )
@@ -218,6 +519,10 @@ export default function FamilyPage() {
   const [savingMember, setSavingMember] = useState(false)
 
   const [notification, setNotification] = useState<string | null>(null)
+
+  // Equipment state
+  const [expandedEquipment, setExpandedEquipment] = useState<Set<string>>(new Set())
+  const [equipmentByMember, setEquipmentByMember] = useState<Record<string, EquipmentItem[]>>({})
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -387,6 +692,61 @@ export default function FamilyPage() {
     }
   }
 
+  // Equipment handlers
+  const toggleEquipment = async (memberId: string) => {
+    const wasExpanded = expandedEquipment.has(memberId)
+    setExpandedEquipment(prev => {
+      const next = new Set(prev)
+      if (wasExpanded) {
+        next.delete(memberId)
+      } else {
+        next.add(memberId)
+      }
+      return next
+    })
+
+    // Lazy-load on first expand
+    if (!wasExpanded && !(memberId in equipmentByMember)) {
+      try {
+        const res = await fetch(`/api/family/members/${memberId}/equipment`)
+        const data = await res.json()
+        if (res.ok) {
+          setEquipmentByMember(prev => ({ ...prev, [memberId]: data.items ?? [] }))
+        }
+      } catch {
+        // silently fail — empty array shown
+        setEquipmentByMember(prev => ({ ...prev, [memberId]: [] }))
+      }
+    }
+  }
+
+  const handleEquipmentAdd = (memberId: string, item: EquipmentItem) => {
+    setEquipmentByMember(prev => ({
+      ...prev,
+      [memberId]: [...(prev[memberId] ?? []), item],
+    }))
+  }
+
+  const handleEquipmentUpdate = (memberId: string, updated: EquipmentItem) => {
+    setEquipmentByMember(prev => ({
+      ...prev,
+      [memberId]: (prev[memberId] ?? []).map(i => i.id === updated.id ? updated : i),
+    }))
+  }
+
+  const handleEquipmentDelete = async (memberId: string, itemId: string) => {
+    try {
+      const res = await fetch(`/api/family/members/${memberId}/equipment/${itemId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      setEquipmentByMember(prev => ({
+        ...prev,
+        [memberId]: (prev[memberId] ?? []).filter(i => i.id !== itemId),
+      }))
+    } catch {
+      showNotif('Failed to remove gear item')
+    }
+  }
+
   const inviteToken = family?.invite_token || family?.inviteToken
 
   if (status === 'loading' || loading) {
@@ -515,6 +875,12 @@ export default function FamilyPage() {
                     onRename={renameMember}
                     onColorChange={changeColor}
                     onDelete={deleteMember}
+                    equipmentExpanded={expandedEquipment.has(member.id)}
+                    onToggleEquipment={toggleEquipment}
+                    equipmentItems={equipmentByMember[member.id]}
+                    onEquipmentAdd={handleEquipmentAdd}
+                    onEquipmentUpdate={handleEquipmentUpdate}
+                    onEquipmentDelete={handleEquipmentDelete}
                   />
                 ))}
 
