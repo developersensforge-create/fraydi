@@ -61,13 +61,15 @@ export default function WatchList() {
         // First try hot events
         let res = await fetch('/api/watch/events?interest_level=hot&limit=5')
         if (!res.ok) throw new Error()
-        let data: WatchEvent[] = await res.json()
+        let json = await res.json()
+        let data: WatchEvent[] = Array.isArray(json) ? json : json.events || []
 
         // Fall back to interested if no hot events
         if (data.length === 0) {
           res = await fetch('/api/watch/events?interest_level=interested&limit=5')
           if (!res.ok) throw new Error()
-          data = await res.json()
+          json = await res.json()
+          data = Array.isArray(json) ? json : json.events || []
         }
 
         setEvents(data)
