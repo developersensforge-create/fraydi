@@ -138,15 +138,46 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/family/invite — list pending invites for current user's family
-export async function GET() {
+// GET /api/family/invite?token=xxx — public lookup by token (no auth needed)
+// GET /api/family/invite — list pending invites for current user's family (auth required)
+export async function GET(request: NextRequest) {
   try {
+    const db = createServerSupabase()
+    const token = request.nextUrl.searchParams.get('token')
+
+    // Public token lookup — no auth needed
+    if (token) {
+      const { data: invitation, error } = await db
+        .from('family_invitations')
+        .select('*, families(name)')
+        .eq('token', token.trim())
+        .eq('status', 'pending')
+        .single()
+
+      if (error || !invitation) {
+        return NextResponse.json({ error: 'Invite not found or expired' }, { status: 404 })
+      }
+
+      // Get inviter name
+      const { data: inviter } = await db
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', invitation.invited_by)
+        .single()
+
+      return NextResponse.json({
+        family_name: (invitation as any).families?.name ?? 'your family',
+        inviter_name: (inviter as any)?.full_name ?? (inviter as any)?.email ?? 'Someone',
+        invited_email: invitation.invited_email,
+        expires_at: invitation.expires_at,
+      })
+    }
+
+    // Auth-required: list all pending invites for current family
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-
-    const db = createServerSupabase()
 
     const { data: profile } = await db
       .from('profiles')
