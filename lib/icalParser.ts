@@ -68,11 +68,16 @@ export function parseIcal(icalText: string): ParsedEvent[] {
         const startRaw = current['DTSTART'] || ''
         const endRaw = current['DTEND'] || startRaw
 
+        const startIso = startRaw ? parseIcalDate(startRaw) : new Date().toISOString()
+        const endIso = endRaw ? parseIcalDate(endRaw) : new Date().toISOString()
+        // Append start_time to UID so recurring event instances are unique
+        const uniqueUid = `${current['UID']}::${startIso}`
+
         events.push({
-          uid: current['UID'],
+          uid: uniqueUid,
           title: unescape(current['SUMMARY'] || 'Untitled'),
-          start_time: startRaw ? parseIcalDate(startRaw) : new Date().toISOString(),
-          end_time: endRaw ? parseIcalDate(endRaw) : new Date().toISOString(),
+          start_time: startIso,
+          end_time: endIso,
           description: current['DESCRIPTION'] ? unescape(current['DESCRIPTION']) : null,
           location: current['LOCATION'] ? unescape(current['LOCATION']) : null,
         })
