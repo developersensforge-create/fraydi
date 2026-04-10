@@ -15,9 +15,8 @@ export async function GET(
 
   const { data, error } = await getSupabaseAdmin()
     .from('watch_events')
-    .select('id, title, event_date, event_time, location, description, price, tags, url, interest_level, dismissed')
+    .select('id, title, event_date, event_time, location, description, price, tags, url, interest_level')
     .eq('watch_source_id', sourceId)
-    .eq('dismissed', false)
     .order('event_date', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -34,7 +34,6 @@ export async function GET(req: NextRequest) {
     .from('watch_events')
     .select('*, watch_sources(name, color)')
     .eq('family_id', family_id)
-    .eq('dismissed', false)
     .gte('event_date', startStr)
     .lte('event_date', endStr)
     .order('event_date', { ascending: true })
