@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 
 type InviteInfo = {
   member_name: string
@@ -14,6 +14,7 @@ type PageState = 'loading' | 'ready' | 'success' | 'error' | 'already_used'
 
 export default function InvitePage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const token = params?.token as string
 
   const [pageState, setPageState] = useState<PageState>('loading')
@@ -39,13 +40,47 @@ export default function InvitePage() {
           return
         }
         setInvite(data.invite)
-        setPageState('ready')
+
+        // Auto-handle query params from email links
+        const access = searchParams?.get('access')
+        const decline = searchParams?.get('decline')
+        if (decline === 'true') {
+          handleDeclineAuto(token)
+        } else if (access === 'full' || access === 'busy_only') {
+          handleAcceptAuto(token, access)
+        } else {
+          setPageState('ready')
+        }
       })
       .catch(() => {
         setPageState('error')
         setErrorMsg('Failed to load invite. Please try again.')
       })
-  }, [token])
+  }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleAcceptAuto(t: string, access: string) {
+    const res = await fetch(`/api/family/invite/${t}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calendar_access: access }),
+    }).catch(() => null)
+    if (res?.ok) {
+      setSuccessAccess(access === 'full' ? 'full calendar' : 'availability only')
+      setPageState('success')
+    } else {
+      setPageState('ready')
+    }
+  }
+
+  async function handleDeclineAuto(t: string) {
+    const res = await fetch(`/api/family/invite/${t}/decline`, { method: 'POST' }).catch(() => null)
+    if (res?.ok) {
+      setSuccessAccess('')
+      setPageState('success')
+    } else {
+      setPageState('ready')
+    }
+  }
 
   async function handleAccept(calendarAccess: 'full' | 'busy_only') {
     if (acting) return

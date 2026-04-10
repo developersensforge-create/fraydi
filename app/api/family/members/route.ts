@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://fraydi.vercel.app'
       const fullAccessUrl = `${baseUrl}/invite/${invite_token}?access=full`
       const busyOnlyUrl = `${baseUrl}/invite/${invite_token}?access=busy_only`
-      const declineUrl = `${baseUrl}/invite/${invite_token}/decline`
+      const declineUrl = `${baseUrl}/invite/${invite_token}?decline=true`
 
       const { error: resendError } = await resend.emails.send({
         from: 'Fraydi <noreply@dayryz.com>',
