@@ -94,8 +94,13 @@ export async function GET(req: NextRequest) {
     const calMap: Record<string, { name: string; color: string; visible: boolean }> = {};
     for (const cal of calListData.items ?? []) {
       const pref = prefMap.get(cal.id);
+      // Clean calendar name — if it looks like a URL, use a friendly name
+      const rawName = pref?.display_name ?? cal.summary ?? "Google Calendar"
+      const calName = rawName.startsWith('http') || rawName.startsWith('webcal')
+        ? (cal.summaryOverride ?? 'Subscribed Calendar')
+        : rawName
       calMap[cal.id] = {
-        name: pref?.display_name ?? cal.summary ?? "Google Calendar",
+        name: calName,
         color: pref?.color ?? cal.backgroundColor ?? "#4285F4",
         visible: pref?.visible ?? true,
       };
@@ -172,7 +177,17 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 3. Merge & sort ─────────────────────────────────────────────────────────
-  const all = [...googleEvents, ...icalEvents];
+  // Deduplicate across sources: if same title + same date appears in both Google and iCal, keep Google version
+  const seenTitleDate = new Set<string>()
+  const deduped: typeof googleEvents = []
+  for (const ev of [...googleEvents, ...icalEvents]) {
+    const key = `${ev.title.toLowerCase().trim()}::${ev.start.slice(0, 10)}`
+    if (!seenTitleDate.has(key)) {
+      seenTitleDate.add(key)
+      deduped.push(ev)
+    }
+  }
+  const all = deduped;
   all.sort((a, b) => {
     if (a.isAllDay && !b.isAllDay) return -1;
     if (!a.isAllDay && b.isAllDay) return 1;
