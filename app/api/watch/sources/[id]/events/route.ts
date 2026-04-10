@@ -6,31 +6,20 @@ const getSupabaseAdmin = () => createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
 )
 
-// GET /api/watch/sources/[id]/events — all events for a specific calendar source
+// GET /api/watch/sources/[id]/events — all events for a specific watch source
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const sourceId = params.id
 
-  // Try calendar_events table first (iCal imports)
-  const { data: calEvents, error: calError } = await getSupabaseAdmin()
-    .from('calendar_events')
-    .select('id, title, start_time, end_time, location, description')
-    .eq('calendar_source_id', sourceId)
-    .order('start_time', { ascending: true })
-
-  if (!calError && calEvents && calEvents.length > 0) {
-    return NextResponse.json({ events: calEvents, source: 'calendar_events' })
-  }
-
-  // Fallback: watch_events table
-  const { data: watchEvents, error: watchError } = await getSupabaseAdmin()
+  const { data, error } = await getSupabaseAdmin()
     .from('watch_events')
-    .select('id, title, start_time, end_time, location, description')
+    .select('id, title, event_date, event_time, location, description, price, tags, url, interest_level, dismissed')
     .eq('watch_source_id', sourceId)
-    .order('start_time', { ascending: true })
+    .eq('dismissed', false)
+    .order('event_date', { ascending: true })
 
-  if (watchError) return NextResponse.json({ error: watchError.message }, { status: 500 })
-  return NextResponse.json({ events: watchEvents ?? [], source: 'watch_events' })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ events: data ?? [] })
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import Link from 'next/link'
 
@@ -16,28 +16,43 @@ type WatchSource = {
   event_count?: number
 }
 
-type CalEvent = {
+type WatchEvent = {
   id: string
   title: string
-  start_time: string
-  end_time?: string | null
+  event_date?: string | null
+  event_time?: string | null
   location?: string | null
   description?: string | null
+  price?: string | null
+  tags?: string[] | null
+  url?: string | null
+  interest_level?: string | null
 }
 
-function formatDateTime(iso: string): string {
+const INTEREST_META: Record<string, { icon: string; label: string; colorClass: string }> = {
+  watch:      { icon: '👀', label: 'Watching',  colorClass: 'text-gray-500 bg-gray-100' },
+  interested: { icon: '⭐', label: 'Interested', colorClass: 'text-yellow-600 bg-yellow-50' },
+  hot:        { icon: '🔥', label: 'Must Go',    colorClass: 'text-orange-600 bg-orange-50' },
+}
+
+function formatDate(dateStr?: string | null, timeStr?: string | null): string {
+  if (!dateStr) return 'Date TBD'
   try {
-    const d = new Date(iso)
-    const isAllDay = iso.endsWith('T00:00:00Z') || iso.length === 10
-    if (isAllDay) return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-    return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-  } catch { return iso }
+    const d = new Date(dateStr + 'T12:00:00Z')
+    const datePart = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    return timeStr ? `${datePart} · ${timeStr}` : datePart
+  } catch { return dateStr }
 }
 
-function groupByMonth(events: CalEvent[]): Record<string, CalEvent[]> {
-  const groups: Record<string, CalEvent[]> = {}
+function groupByMonth(events: WatchEvent[]): Record<string, WatchEvent[]> {
+  const groups: Record<string, WatchEvent[]> = {}
   for (const e of events) {
-    const key = new Date(e.start_time).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    let key = 'No Date'
+    if (e.event_date) {
+      try {
+        key = new Date(e.event_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      } catch { key = 'No Date' }
+    }
     if (!groups[key]) groups[key] = []
     groups[key].push(e)
   }
@@ -46,9 +61,8 @@ function groupByMonth(events: CalEvent[]): Record<string, CalEvent[]> {
 
 export default function WatchSourceDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const router = useRouter()
   const [source, setSource] = useState<WatchSource | null>(null)
-  const [events, setEvents] = useState<CalEvent[]>([])
+  const [events, setEvents] = useState<WatchEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,21 +70,18 @@ export default function WatchSourceDetailPage() {
   const loadData = async () => {
     try {
       setLoading(true)
-      // Get family_id first
       const profRes = await fetch('/api/user/profile')
       if (!profRes.ok) throw new Error('Not authenticated')
       const prof = await profRes.json()
       if (!prof.family_id) throw new Error('No family found')
 
-      // Load source details
       const srcRes = await fetch(`/api/watch/sources?family_id=${prof.family_id}`)
-      if (!srcRes.ok) throw new Error('Failed to load source')
+      if (!srcRes.ok) throw new Error('Failed to load sources')
       const srcData = await srcRes.json()
       const found = (srcData.sources ?? []).find((s: WatchSource) => s.id === id)
       if (!found) throw new Error('Source not found')
       setSource(found)
 
-      // Load ALL events for this source (no date window)
       const evRes = await fetch(`/api/watch/sources/${id}/events`)
       if (evRes.ok) {
         const evData = await evRes.json()
@@ -102,7 +113,6 @@ export default function WatchSourceDetailPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="mx-auto max-w-2xl px-4 sm:px-6 py-8">
-        {/* Back */}
         <Link href="/watch" className="text-sm text-gray-400 hover:text-gray-600 mb-4 inline-block">
           ← Watch Sources
         </Link>
@@ -113,13 +123,14 @@ export default function WatchSourceDetailPage() {
           <div className="text-center text-red-500 py-16">{error}</div>
         ) : source ? (
           <>
-            {/* Header */}
             <div className="flex items-start justify-between mb-6">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">{source.name}</h1>
                 <p className="text-sm text-gray-400 mt-0.5">
                   {events.length} event{events.length !== 1 ? 's' : ''}
-                  {source.last_synced_at ? ` · last synced ${new Date(source.last_synced_at).toLocaleDateString()}` : ' · never synced'}
+                  {source.last_synced_at
+                    ? ` · synced ${new Date(source.last_synced_at).toLocaleDateString()}`
+                    : ' · never synced'}
                 </p>
               </div>
               <button
@@ -131,7 +142,6 @@ export default function WatchSourceDetailPage() {
               </button>
             </div>
 
-            {/* Events grouped by month */}
             {events.length === 0 ? (
               <div className="text-center py-16">
                 <p className="text-gray-500">No events yet.</p>
@@ -141,18 +151,64 @@ export default function WatchSourceDetailPage() {
               <div className="space-y-6">
                 {Object.entries(grouped).map(([month, monthEvents]) => (
                   <div key={month}>
-                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{month}</h2>
+                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">{month}</h2>
                     <div className="space-y-2">
-                      {monthEvents.map((ev) => (
-                        <div key={ev.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm">
-                          <p className="font-semibold text-gray-900 text-sm">{ev.title}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{formatDateTime(ev.start_time)}</p>
-                          {ev.location && <p className="text-xs text-gray-400 mt-0.5">📍 {ev.location}</p>}
-                          {ev.description && (
-                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{ev.description}</p>
-                          )}
-                        </div>
-                      ))}
+                      {monthEvents.map((ev) => {
+                        const meta = ev.interest_level ? INTEREST_META[ev.interest_level] : null
+                        return (
+                          <div key={ev.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-gray-900 text-sm leading-snug">{ev.title}</p>
+                                {/* Date + time */}
+                                <p className="text-xs text-[#f96400] font-medium mt-1">
+                                  📅 {formatDate(ev.event_date, ev.event_time)}
+                                </p>
+                                {/* Location */}
+                                {ev.location && (
+                                  <p className="text-xs text-gray-400 mt-0.5">📍 {ev.location}</p>
+                                )}
+                                {/* Price */}
+                                {ev.price && (
+                                  <p className="text-xs text-green-600 font-medium mt-0.5">💰 {ev.price}</p>
+                                )}
+                                {/* Description */}
+                                {ev.description && (
+                                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">{ev.description}</p>
+                                )}
+                                {/* Tags */}
+                                {ev.tags && ev.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {ev.tags.map((tag) => (
+                                      <span key={tag} className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                                        {tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {/* Link */}
+                                {ev.url && (
+                                  <a
+                                    href={ev.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-[#f96400] hover:underline mt-1 inline-block"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    View details →
+                                  </a>
+                                )}
+                              </div>
+                              {/* Interest badge */}
+                              {meta && (
+                                <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${meta.colorClass}`}>
+                                  {meta.icon} {meta.label}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 ))}
