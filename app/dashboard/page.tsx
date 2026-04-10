@@ -10,27 +10,31 @@ import RoutinesCard from '@/components/RoutinesCard'
 
 type ViewMode = 'Today' | 'Week' | 'Month'
 
-type CalendarEvent = {
+type UnifiedEvent = {
   id: string
-  summary: string
-  start: { dateTime?: string; date?: string }
-  end: { dateTime?: string; date?: string }
-  htmlLink?: string
+  title: string
+  start: string
+  end: string
+  isAllDay: boolean
+  calendarName?: string
+  calendarColor?: string
+  source?: string
+  location?: string
+  description?: string
 }
 
-function toFamilyEvent(e: CalendarEvent): FamilyEvent {
-  const isAllDay = !e.start.dateTime
-  const startTime = e.start.dateTime
-    ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    : 'All day'
+function toFamilyEvent(e: UnifiedEvent): FamilyEvent {
+  const startTime = e.isAllDay
+    ? 'All day'
+    : new Date(e.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   return {
     id: e.id,
     time: startTime,
-    title: e.summary || 'Untitled event',
-    memberName: 'You',
-    memberColor: '#f96400',
+    title: e.title || 'Untitled event',
+    memberName: e.calendarName ?? 'You',
+    memberColor: e.calendarColor ?? '#f96400',
     requiresCoverage: false,
-    isAllDay,
+    isAllDay: e.isAllDay,
   }
 }
 
@@ -68,15 +72,15 @@ export default function DashboardPage() {
     if (!session) return
     setLoading(true)
     setSynced(false)
-    fetch(`/api/calendar/events?date=${formatDate(currentDate)}`)
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    fetch(`/api/user/events?date=${formatDate(currentDate)}&tz=${encodeURIComponent(tz)}`)
       .then(r => r.json())
       .then(data => {
         if (data.events) {
           setEvents(data.events.map(toFamilyEvent))
           setSynced(true)
-          // Try to infer calendar count from the response
-          if (data.calendarCount) setCalendarCount(data.calendarCount)
-          else setCalendarCount(1)
+          const total = (data.calendarSources ?? []).length
+          setCalendarCount(total || 1)
         }
       })
       .catch(() => {})
@@ -240,7 +244,7 @@ export default function DashboardPage() {
                   {loading
                     ? '⏳ Syncing calendar...'
                     : synced
-                    ? '✅ Synced with Google Calendar'
+                    ? '✅ Synced calendars'
                     : '🗓 Connect Google Calendar to see real events'}
                 </p>
                 {synced && calendarCount !== null && (
