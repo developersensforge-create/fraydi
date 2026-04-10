@@ -146,10 +146,19 @@ export default function WatchList() {
                           <p className="text-xs text-green-600 font-medium mt-0.5">💰 {event.price}</p>
                         )}
 
-                        {/* Source */}
-                        {event.watch_sources?.name && (
-                          <p className="text-xs text-gray-400 mt-0.5">{event.watch_sources.name}</p>
-                        )}
+                        {/* Source + link */}
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {event.watch_sources?.name && (
+                            <p className="text-xs text-gray-400">{event.watch_sources.name}</p>
+                          )}
+                          {event.url && (
+                            <a href={event.url} target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="text-xs text-[#f96400] font-medium hover:underline">
+                              Details →
+                            </a>
+                          )}
+                        </div>
                       </div>
 
                       <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${meta.colorClass}`}>

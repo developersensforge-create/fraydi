@@ -119,11 +119,19 @@ export default function DashboardPage() {
 
       <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
         {/* Page header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            {isToday ? 'Good morning 👋' : 'Family Timeline'}
-          </h1>
-          <p className="text-gray-500 mt-1">Here&apos;s what&apos;s happening with your family.</p>
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+              {isToday ? `Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'} 👋` : 'Family Timeline'}
+            </h1>
+            <p className="text-sm text-gray-400 mt-0.5">{displayDate(currentDate)}</p>
+          </div>
+          {!isToday && (
+            <button onClick={() => setCurrentDate(today)}
+              className="text-xs font-semibold text-[#f96400] border border-orange-200 bg-orange-50 px-3 py-1.5 rounded-lg hover:bg-orange-100 transition">
+              Today
+            </button>
+          )}
         </div>
 
         {/* Desktop layout: sidebar + main + right */}
@@ -212,72 +220,71 @@ export default function DashboardPage() {
               )}
 
               {/* Timeline */}
-              <div className="px-5 py-4">
+              <div className="px-4 py-3">
                 {loading ? (
-                  <div className="py-12 text-center">
-                    <p className="text-4xl mb-3">⏳</p>
-                    <p className="text-sm font-semibold text-gray-700">Loading events...</p>
-                    <p className="text-xs text-gray-400 mt-1">Syncing with Google Calendar</p>
+                  <div className="py-10 text-center">
+                    <div className="inline-flex items-center gap-2 text-gray-400">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                      </svg>
+                      <span className="text-sm">Loading events…</span>
+                    </div>
                   </div>
                 ) : !session ? (
-                  <div className="py-12 text-center">
-                    <p className="text-4xl mb-3">📅</p>
-                    <p className="text-sm font-semibold text-gray-700">No Google Calendar connected</p>
-                    <p className="text-xs text-gray-400 mt-1">Sign in with Google to see your real events</p>
+                  <div className="py-10 text-center">
+                    <p className="text-2xl mb-2">📅</p>
+                    <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
                 ) : events.length === 0 ? (
-                  <div className="py-12 text-center">
-                    <p className="text-4xl mb-3">📅</p>
-                    <p className="text-sm font-semibold text-gray-700">No events today</p>
-                    <p className="text-xs text-gray-400 mt-1">Your Google Calendar is connected but nothing is scheduled</p>
+                  <div className="py-10 text-center">
+                    <p className="text-2xl mb-2">✨</p>
+                    <p className="text-sm font-medium text-gray-600">Nothing scheduled</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Free day ahead</p>
                   </div>
                 ) : (
-                  <div className="relative">
-                    {/* All-day events band */}
+                  <div>
+                    {/* All-day events */}
                     {allDayEvents.length > 0 && (
-                      <div className="mb-3 pb-3 border-b border-gray-100">
+                      <div className="mb-2 pb-2 border-b border-gray-100">
                         {allDayEvents.map((event) => (
                           <EventCard key={event.id} event={event} />
                         ))}
                       </div>
                     )}
 
-                    {/* Timed events timeline */}
-                    {timedEvents.length > 0 && (
-                      <div className="relative">
-                        <div className="absolute left-[4.75rem] top-2 bottom-2 w-px bg-gray-100" />
-                        <div className="divide-y divide-gray-50">
-                          {timedEvents.map((event) => {
-                            const conflicts = conflictMap.get(event.id) ?? []
-                            return (
-                              <div key={event.id}>
-                                <EventCard event={event} />
-                                {/* Ghost slots for conflicting member events */}
-                                {conflicts.map((me, i) => (
-                                  <div key={i} className="flex items-center gap-2 px-4 py-1.5 ml-2">
-                                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: me.memberColor }} />
-                                    <span className="text-xs font-medium" style={{ color: me.memberColor }}>
-                                      ⚠️ {me.memberName} busy
-                                      {me.title ? `: ${me.title}` : ''}
-                                    </span>
-                                  </div>
-                                ))}
+                    {/* Timed events — clean timeline */}
+                    <div className="space-y-0.5">
+                      {timedEvents.map((event) => {
+                        const conflicts = conflictMap.get(event.id) ?? []
+                        return (
+                          <div key={event.id}>
+                            <EventCard event={event} />
+                            {/* Liwei busy indicators — subtle */}
+                            {conflicts.map((me, i) => (
+                              <div key={i} className="flex items-center gap-2 pl-[4.75rem] py-0.5 -mt-0.5 mb-1">
+                                <div className="w-0.5 h-full rounded-full" style={{ backgroundColor: me.memberColor + '60' }} />
+                                <span className="text-[11px] font-medium" style={{ color: me.memberColor + 'cc' }}>
+                                  {me.memberName} · {me.title ?? 'busy'}
+                                </span>
                               </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
+                            ))}
+                          </div>
+                        )
+                      })}
+                    </div>
 
-                    {/* Member busy slots with no direct conflict — shown at bottom */}
-                    {memberEvents.filter(me => !me.isAllDay && !Array.from(conflictMap.values()).flat().includes(me)).length > 0 && (
+                    {/* Family availability footer */}
+                    {memberEvents.filter(me => !me.isAllDay).length > 0 && (
                       <div className="mt-3 pt-3 border-t border-dashed border-gray-100">
-                        <p className="text-xs text-gray-400 mb-1.5 px-1">Family availability</p>
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Family calendar</p>
                         {memberEvents.filter(me => !me.isAllDay).map((me, i) => (
-                          <div key={i} className="flex items-center gap-2 px-1 py-0.5">
-                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-50" style={{ backgroundColor: me.memberColor }} />
+                          <div key={i} className="flex items-center gap-2 py-0.5">
+                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: me.memberColor + '80' }} />
                             <span className="text-xs text-gray-400">
-                              {me.memberName}: {new Date(me.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}–{new Date(me.end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                              <span className="font-medium" style={{ color: me.memberColor }}>{me.memberName}</span>
+                              {' · '}
+                              {new Date(me.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                               {me.title ? ` · ${me.title}` : ''}
                             </span>
                           </div>
