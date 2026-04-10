@@ -23,7 +23,7 @@ type UnifiedEvent = {
   description?: string
 }
 
-function toFamilyEvent(e: UnifiedEvent): FamilyEvent {
+function toFamilyEvent(e: UnifiedEvent): FamilyEvent & { startIso?: string; endIso?: string } {
   const startTime = e.isAllDay
     ? 'All day'
     : new Date(e.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
@@ -35,6 +35,8 @@ function toFamilyEvent(e: UnifiedEvent): FamilyEvent {
     memberColor: e.calendarColor ?? '#f96400',
     requiresCoverage: false,
     isAllDay: e.isAllDay,
+    startIso: e.start,
+    endIso: e.end,
   }
 }
 
@@ -63,6 +65,10 @@ export default function DashboardPage() {
   const [currentDate, setCurrentDate] = useState(today)
   const [viewMode, setViewMode] = useState<ViewMode>('Today')
   const [events, setEvents] = useState<FamilyEvent[]>([])
+  const [memberEvents, setMemberEvents] = useState<Array<{
+    memberId: string; memberName: string; memberColor: string;
+    start: string; end: string; isAllDay: boolean; title?: string
+  }>>([])
   const [loading, setLoading] = useState(false)
   const [synced, setSynced] = useState(false)
   const [calendarCount, setCalendarCount] = useState<number | null>(null)
@@ -73,18 +79,18 @@ export default function DashboardPage() {
     setLoading(true)
     setSynced(false)
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    fetch(`/api/user/events?date=${formatDate(currentDate)}&tz=${encodeURIComponent(tz)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.events) {
-          setEvents(data.events.map(toFamilyEvent))
-          setSynced(true)
-          const total = (data.calendarSources ?? []).length
-          setCalendarCount(total || 1)
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    const dateStr = formatDate(currentDate)
+    Promise.all([
+      fetch(`/api/user/events?date=${dateStr}&tz=${encodeURIComponent(tz)}`).then(r => r.json()),
+      fetch(`/api/family/member-events?date=${dateStr}`).then(r => r.json()).catch(() => ({ memberEvents: [] })),
+    ]).then(([myData, memberData]) => {
+      if (myData.events) {
+        setEvents(myData.events.map(toFamilyEvent))
+        setSynced(true)
+        setCalendarCount((myData.calendarSources ?? []).length || 1)
+      }
+      setMemberEvents(memberData.memberEvents ?? [])
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [session, currentDate])
 
   const isToday = formatDate(currentDate) === formatDate(today)
@@ -93,6 +99,19 @@ export default function DashboardPage() {
   // Split all-day vs timed events
   const allDayEvents = events.filter((e) => e.isAllDay)
   const timedEvents = events.filter((e) => !e.isAllDay)
+
+  // Conflict detection: find my timed events that overlap with member events
+  const conflictMap = new Map<string, typeof memberEvents>()
+  for (const myEv of timedEvents) {
+    const myStart = (myEv as any).startIso as string | undefined
+    const myEnd = (myEv as any).endIso as string | undefined
+    if (!myStart || !myEnd) continue
+    const overlapping = memberEvents.filter(me => {
+      if (me.isAllDay) return false
+      return me.start < myEnd && me.end > myStart
+    })
+    if (overlapping.length > 0) conflictMap.set(myEv.id, overlapping)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -228,10 +247,41 @@ export default function DashboardPage() {
                       <div className="relative">
                         <div className="absolute left-[4.75rem] top-2 bottom-2 w-px bg-gray-100" />
                         <div className="divide-y divide-gray-50">
-                          {timedEvents.map((event) => (
-                            <EventCard key={event.id} event={event} />
-                          ))}
+                          {timedEvents.map((event) => {
+                            const conflicts = conflictMap.get(event.id) ?? []
+                            return (
+                              <div key={event.id}>
+                                <EventCard event={event} />
+                                {/* Ghost slots for conflicting member events */}
+                                {conflicts.map((me, i) => (
+                                  <div key={i} className="flex items-center gap-2 px-4 py-1.5 ml-2">
+                                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: me.memberColor }} />
+                                    <span className="text-xs font-medium" style={{ color: me.memberColor }}>
+                                      ⚠️ {me.memberName} busy
+                                      {me.title ? `: ${me.title}` : ''}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          })}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Member busy slots with no direct conflict — shown at bottom */}
+                    {memberEvents.filter(me => !me.isAllDay && !Array.from(conflictMap.values()).flat().includes(me)).length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-dashed border-gray-100">
+                        <p className="text-xs text-gray-400 mb-1.5 px-1">Family availability</p>
+                        {memberEvents.filter(me => !me.isAllDay).map((me, i) => (
+                          <div key={i} className="flex items-center gap-2 px-1 py-0.5">
+                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-50" style={{ backgroundColor: me.memberColor }} />
+                            <span className="text-xs text-gray-400">
+                              {me.memberName}: {new Date(me.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}–{new Date(me.end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                              {me.title ? ` · ${me.title}` : ''}
+                            </span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

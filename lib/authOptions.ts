@@ -1,5 +1,13 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { createClient } from '@supabase/supabase-js'
+
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+  )
+}
 
 async function refreshAccessToken(token: Record<string, unknown>) {
   try {
@@ -47,9 +55,26 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   callbacks: {
-    async jwt({ token, account }) {
-      // First sign-in: save tokens
+    async jwt({ token, account, user }) {
+      // First sign-in: save tokens + store in DB
       if (account?.access_token) {
+        // Store token in google_calendar_tokens table for family sharing
+        try {
+          const db = getSupabaseAdmin()
+          const email = user?.email ?? (token.email as string)
+          if (email) {
+            const { data: profile } = await db.from('profiles').select('id').eq('email', email).single()
+            if (profile?.id) {
+              await db.from('google_calendar_tokens').upsert({
+                profile_id: profile.id,
+                access_token: account.access_token,
+                refresh_token: account.refresh_token ?? null,
+                expires_at: account.expires_at ? new Date(account.expires_at * 1000).toISOString() : null,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'profile_id' })
+            }
+          }
+        } catch { /* non-fatal */ }
         return {
           ...token,
           accessToken: account.access_token,
