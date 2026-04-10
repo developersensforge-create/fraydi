@@ -205,9 +205,9 @@ export default function WatchPage() {
   const SourceRow = ({ source }: { source: WatchSource }) => (
     <div className="flex items-center gap-3 p-4 border-b border-gray-100 last:border-0">
       <div className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${source.active ? 'bg-green-400' : 'bg-gray-300'}`} />
-      <div className="flex-1 min-w-0">
+      <Link href={`/watch/${source.id}`} className="flex-1 min-w-0 block">
         <div className="flex items-center gap-2">
-          <Link href={`/watch/${source.id}`} className="text-sm font-semibold text-gray-900 truncate hover:text-[#f96400] transition-colors">{source.name}</Link>
+          <span className="text-sm font-semibold text-gray-900 truncate hover:text-[#f96400] transition-colors">{source.name}</span>
           <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md flex-shrink-0">
             {TYPE_LABELS[source.type] ?? source.type}
           </span>
@@ -215,7 +215,7 @@ export default function WatchPage() {
         <p className="text-xs text-gray-400 mt-0.5">
           {source.event_count ?? 0} event{(source.event_count ?? 0) !== 1 ? 's' : ''} · synced {formatSynced(source.last_synced_at)}
         </p>
-      </div>
+      </Link>
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={() => syncSource(source.id)}
