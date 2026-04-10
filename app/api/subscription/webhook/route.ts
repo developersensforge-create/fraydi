@@ -3,7 +3,7 @@ import { createServerSupabase } from '@/lib/supabaseServer'
 import Stripe from 'stripe'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-03-31.basil',
+  apiVersion: '2026-03-25.dahlia',
 })
 
 // Next.js App Router reads body as text() — no config needed
