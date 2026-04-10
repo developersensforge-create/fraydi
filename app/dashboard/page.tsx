@@ -78,6 +78,9 @@ export default function DashboardPage() {
     if (!session) return
     setLoading(true)
     setSynced(false)
+    // Ensure current user's Google token is stored for family sharing
+    fetch('/api/user/sync-token', { method: 'POST' }).catch(() => {})
+
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const dateStr = formatDate(currentDate)
     Promise.all([
