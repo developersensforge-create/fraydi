@@ -24,10 +24,28 @@ async function refreshAccessToken(token: Record<string, unknown>) {
     });
     const refreshed = await res.json();
     if (!res.ok) throw refreshed;
+    const newExpiry = Date.now() + refreshed.expires_in * 1000
+    // Also update DB so family member-events route sees fresh token
+    try {
+      const db = getSupabaseAdmin()
+      const email = token.email as string
+      if (email) {
+        const { data: profile } = await db.from('profiles').select('id').eq('email', email).single()
+        if (profile?.id) {
+          const update: Record<string, unknown> = {
+            access_token: refreshed.access_token,
+            expires_at: new Date(newExpiry).toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+          if (refreshed.refresh_token) update.refresh_token = refreshed.refresh_token
+          await db.from('google_calendar_tokens').update(update).eq('profile_id', profile.id)
+        }
+      }
+    } catch { /* non-fatal */ }
     return {
       ...token,
       accessToken: refreshed.access_token,
-      accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+      accessTokenExpires: newExpiry,
       refreshToken: refreshed.refresh_token ?? token.refreshToken,
       error: undefined,
     };
@@ -65,13 +83,17 @@ export const authOptions: NextAuthOptions = {
           if (email) {
             const { data: profile } = await db.from('profiles').select('id').eq('email', email).single()
             if (profile?.id) {
-              await db.from('google_calendar_tokens').upsert({
+              const tokenData: Record<string, unknown> = {
                 profile_id: profile.id,
                 access_token: account.access_token,
-                refresh_token: account.refresh_token ?? null,
                 expires_at: account.expires_at ? new Date(account.expires_at * 1000).toISOString() : null,
                 updated_at: new Date().toISOString(),
-              }, { onConflict: 'profile_id' })
+              }
+              // Only set refresh_token if Google provided one — never overwrite with null
+              if (account.refresh_token) {
+                tokenData.refresh_token = account.refresh_token
+              }
+              await db.from('google_calendar_tokens').upsert(tokenData, { onConflict: 'profile_id' })
             }
           }
         } catch { /* non-fatal */ }

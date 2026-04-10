@@ -58,10 +58,36 @@ export async function GET(req: NextRequest) {
   const profileIds = familyProfiles.map(p => p.id)
   const { data: tokens } = await db
     .from('google_calendar_tokens')
-    .select('profile_id, access_token, expires_at')
+    .select('profile_id, access_token, refresh_token, expires_at')
     .in('profile_id', profileIds)
 
   const tokenMap = new Map((tokens ?? []).map(t => [t.profile_id, t]))
+
+  // Helper: refresh a Google access token using refresh_token
+  async function refreshGoogleToken(profileId: string, refreshToken: string): Promise<string | null> {
+    try {
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.GOOGLE_CLIENT_ID ?? '',
+          client_secret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+        }),
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      if (!data.access_token) return null
+      // Save new token to DB
+      await db.from('google_calendar_tokens').update({
+        access_token: data.access_token,
+        expires_at: new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('profile_id', profileId)
+      return data.access_token
+    } catch { return null }
+  }
 
   // Fetch each member's events
   const allMemberEvents: MemberBusySlot[] = []
@@ -71,11 +97,17 @@ export async function GET(req: NextRequest) {
       const tokenRow = tokenMap.get(member.id)
       if (!tokenRow?.access_token) return
 
-      // Check if token is expired (skip refresh for now — they need to re-login)
-      if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) return
+      // If expired, attempt refresh
+      let accessToken = tokenRow.access_token
+      if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+        if (!tokenRow.refresh_token) return // no way to refresh
+        const refreshed = await refreshGoogleToken(member.id, tokenRow.refresh_token)
+        if (!refreshed) return // refresh failed
+        accessToken = refreshed
+      }
 
       try {
-        const events = await getEventsForDate(tokenRow.access_token, targetDate)
+        const events = await getEventsForDate(accessToken, targetDate)
         for (const ev of events) {
           const start = ev.start.dateTime ?? ev.start.date ?? ''
           const end = ev.end.dateTime ?? ev.end.date ?? ''

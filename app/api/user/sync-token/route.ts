@@ -28,12 +28,19 @@ export async function POST() {
       ? new Date(session.accessTokenExpires as number).toISOString()
       : new Date(Date.now() + 3600 * 1000).toISOString()
 
-    await db.from('google_calendar_tokens').upsert({
+    // Build upsert — always update access_token and expires_at
+    // Only update refresh_token if we have one (don't overwrite existing with null)
+    const upsertData: Record<string, unknown> = {
       profile_id: profile.id,
       access_token: session.accessToken,
       expires_at: expiresAt,
       updated_at: new Date().toISOString(),
-    }, { onConflict: 'profile_id' })
+    }
+    if (session.refreshToken) {
+      upsertData.refresh_token = session.refreshToken
+    }
+
+    await db.from('google_calendar_tokens').upsert(upsertData, { onConflict: 'profile_id' })
 
     return NextResponse.json({ ok: true })
   } catch (err) {
