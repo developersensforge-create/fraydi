@@ -61,7 +61,8 @@ export const authOptions: NextAuthOptions = {
       if (Date.now() < ((token.accessTokenExpires as number) ?? 0)) {
         return token;
       }
-      // Token expired — refresh it
+      // Token expired — refresh if we have a refresh token, otherwise keep existing
+      if (!(token as Record<string, unknown>).refreshToken) return token;
       return refreshAccessToken(token as Record<string, unknown>);
     },
     async session({ session, token }) {
