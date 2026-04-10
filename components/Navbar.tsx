@@ -35,7 +35,13 @@ export default function Navbar() {
                 href="/watch"
                 className="px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
               >
-                Watch List
+                Radar
+              </Link>
+              <Link
+                href="/family"
+                className="px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+              >
+                Family
               </Link>
             </nav>
 
