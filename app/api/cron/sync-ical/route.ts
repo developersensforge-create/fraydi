@@ -4,12 +4,11 @@ import { fetchAndParseIcal } from '@/lib/icalParser'
 
 // This endpoint is called by Vercel Cron every 4 hours
 // GET /api/cron/sync-ical
-export async function GET() {
-  // Optional: verify cron secret to prevent unauthorized calls
-  // const authHeader = request.headers.get('authorization')
-  // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-  //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  // }
+export async function GET(request: Request) {
+  const authHeader = request.headers.get('authorization')
+  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const db = createServerSupabase()
@@ -38,7 +37,7 @@ export async function GET() {
         const rows = events.map((ev) => ({
           family_id: source.family_id,
           profile_id: source.profile_id,
-          google_event_id: ev.uid,
+          google_event_id: `${source.id}::${ev.uid}`,
           title: ev.title,
           description: ev.description,
           start_time: ev.start_time,
@@ -51,9 +50,9 @@ export async function GET() {
         }))
 
         if (rows.length > 0) {
-          await db
-            .from('calendar_events')
-            .upsert(rows, { onConflict: 'google_event_id' })
+          // Delete old events for this source first, then insert fresh (avoids stale key mismatch)
+          await db.from('calendar_events').delete().eq('calendar_source_id', source.id)
+          await db.from('calendar_events').insert(rows)
         }
 
         await db
