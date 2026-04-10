@@ -26,6 +26,12 @@ export default function Navbar() {
                 Dashboard
               </Link>
               <Link
+                href="/calendars"
+                className="px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+              >
+                Calendars
+              </Link>
+              <Link
                 href="/routines"
                 className="px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
               >
