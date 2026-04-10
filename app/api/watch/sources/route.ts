@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { family_id, profile_id, name, type, url, color } = body
+  const { family_id, name, type, url, color } = body
 
   if (!family_id || !name || !type) {
     return NextResponse.json({ error: 'family_id, name, and type are required' }, { status: 400 })
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await getSupabaseAdmin()
     .from('watch_sources')
-    .insert({ family_id, profile_id: profile_id ?? null, name, type, url: url ?? null, color: color ?? '#6366f1' })
+    .insert({ family_id, name, type, url: url ?? null, color: color ?? '#6366f1' })
     .select()
     .single()
 
