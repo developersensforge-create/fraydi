@@ -64,7 +64,8 @@ export async function POST(request: NextRequest) {
 
     const inviterName = profile.full_name || session.user.name || session.user.email
     const familyName = family?.name || 'their family'
-    const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://fraydi.vercel.app'}/join/${invitation.token}`
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://fraydi.vercel.app').replace(/\/$/, '')
+    const joinUrl = `${appUrl}/join/${invitation.token}`
 
     // Send invite email via Resend
     const { error: emailError } = await resend.emails.send({

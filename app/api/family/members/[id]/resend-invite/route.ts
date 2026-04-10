@@ -68,7 +68,8 @@ export async function POST(
       .eq('id', params.id)
 
     const inviterName = (inviterProfile as any).full_name ?? session.user.email
-    const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL}/join/${token}`
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://fraydi.vercel.app').replace(/\/$/, '')
+    const joinUrl = `${appUrl}/join/${token}`
 
     const { error: resendError } = await resend.emails.send({
       from: 'Fraydi <noreply@dayryz.com>',
