@@ -9,6 +9,11 @@ export async function GET(
   const sourceId = params.id
   const db = createServerSupabase()
 
+  // First: total count of all watch_events (debug)
+  const { count: totalCount } = await db
+    .from('watch_events')
+    .select('*', { count: 'exact', head: true })
+
   const { data, error } = await db
     .from('watch_events')
     .select('id, title, event_date, event_time, location, description, price, tags, url, interest_level')
@@ -16,9 +21,13 @@ export async function GET(
     .order('event_date', { ascending: true })
 
   if (error) {
-    console.error('[watch/sources/[id]/events]', error.message, 'sourceId:', sourceId)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error.message, sourceId }, { status: 500 })
   }
 
-  return NextResponse.json({ events: data ?? [], sourceId, count: data?.length ?? 0 })
+  return NextResponse.json({ 
+    events: data ?? [], 
+    count: data?.length ?? 0,
+    totalInTable: totalCount,
+    sourceId,
+  })
 }
