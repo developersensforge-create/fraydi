@@ -1,42 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/authOptions'
-import { createServerSupabase } from '@/lib/supabaseServer'
+import { createClient } from '@supabase/supabase-js'
 
-async function getFamilyId(email: string): Promise<string | null> {
-  const supabase = createServerSupabase()
-  const { data } = await supabase
-    .from('profiles')
-    .select('family_id')
-    .eq('email', email)
-    .single()
-  return data?.family_id ?? null
-}
+const getSupabaseAdmin = () => createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
+)
 
-export async function GET(_req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const family_id = await getFamilyId(session.user.email)
+export async function GET(req: NextRequest) {
+  const family_id = req.nextUrl.searchParams.get('family_id')
   if (!family_id) {
-    return NextResponse.json({ error: 'No family found' }, { status: 404 })
+    return NextResponse.json({ error: 'family_id required' }, { status: 400 })
   }
 
-  const supabase = createServerSupabase()
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseAdmin()
     .from('routines')
-    .select(`
-      *,
-      family_members (
-        id,
-        name,
-        role,
-        color
-      )
-    `)
+    .select('*')
     .eq('family_id', family_id)
+    .eq('active', true)
     .order('created_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -44,66 +24,39 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const family_id = await getFamilyId(session.user.email)
-  if (!family_id) {
-    return NextResponse.json({ error: 'No family found' }, { status: 404 })
-  }
-
   const body = await req.json()
   const {
+    family_id,
+    assigned_to,
     title,
     description,
-    type,
-    frequency,
+    recurrence,
     days_of_week,
     time_of_day,
-    family_member_id,
-    assignee_ids,
+    reminder_minutes_before,
   } = body
 
-  if (!title) {
-    return NextResponse.json({ error: 'title is required' }, { status: 400 })
+  if (!family_id || !title || !recurrence) {
+    return NextResponse.json({ error: 'family_id, title, and recurrence are required' }, { status: 400 })
   }
 
-  const validTypes = ['habit', 'gear', 'checklist']
-  if (type && !validTypes.includes(type)) {
-    return NextResponse.json({ error: `type must be one of: ${validTypes.join(', ')}` }, { status: 400 })
+  if (!['daily', 'weekly', 'monthly'].includes(recurrence)) {
+    return NextResponse.json({ error: 'recurrence must be daily, weekly, or monthly' }, { status: 400 })
   }
 
-  const validFrequencies = ['daily', 'weekly', 'before_event']
-  if (frequency && !validFrequencies.includes(frequency)) {
-    return NextResponse.json({ error: `frequency must be one of: ${validFrequencies.join(', ')}` }, { status: 400 })
-  }
-
-  const supabase = createServerSupabase()
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseAdmin()
     .from('routines')
     .insert({
       family_id,
-      family_member_id: family_member_id ?? null,
-      assignee_ids: assignee_ids ?? [],
+      assigned_to: assigned_to ?? null,
       title,
       description: description ?? null,
-      type: type ?? 'habit',
-      frequency: frequency ?? 'daily',
+      recurrence,
       days_of_week: days_of_week ?? [],
       time_of_day: time_of_day ?? null,
-      active: true,
+      reminder_minutes_before: reminder_minutes_before ?? 30,
     })
-    .select(`
-      *,
-      family_members (
-        id,
-        name,
-        role,
-        color
-      )
-    `)
+    .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/authOptions'
 import { createServerSupabase } from '@/lib/supabaseServer'
 
-// PATCH /api/family/members/[id] — update name/color
+// PATCH /api/family/members/[id] — update name/color/role
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -15,7 +15,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { name, color } = body
+    const { name, color, role, calendar_access } = body
 
     const db = createServerSupabase()
 
@@ -29,9 +29,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'No family found' }, { status: 404 })
     }
 
-    const updates: Record<string, string> = {}
+    const updates: Record<string, unknown> = {}
     if (name?.trim()) updates.name = name.trim()
     if (color) updates.color = color
+    if (role) updates.role = role
+    if (calendar_access) updates.calendar_access = calendar_access
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
@@ -80,15 +82,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'No family found' }, { status: 404 })
     }
 
-    // Prevent deleting 'me' member
+    // Prevent deleting account holder
     const { data: existing } = await db
       .from('family_members')
-      .select('role')
+      .select('role, is_account_holder')
       .eq('id', params.id)
       .eq('family_id', profile.family_id)
       .single()
 
-    if (existing?.role === 'me') {
+    if (!existing) {
+      return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+    }
+
+    if (existing.role === 'me' || existing.is_account_holder) {
       return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 400 })
     }
 

@@ -58,22 +58,23 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = req.nextUrl
-  const dateStr = searchParams.get('date') ?? undefined
-  const tz = searchParams.get('tz') ?? undefined
+  const dateStr = searchParams.get('date')
+  const tz = searchParams.get('tz') ?? 'UTC'
 
-  // Fetch all events across all calendars for the given date + timezone
-  const result = await getEventsForDate(session.accessToken, dateStr, tz)
-
-  if ('error' in result) {
-    return NextResponse.json({ error: result.error, conflicts: [] }, { status: result.status === 401 ? 403 : 500 })
+  const targetDate = dateStr ? new Date(dateStr) : new Date()
+  if (isNaN(targetDate.getTime())) {
+    return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, { status: 400 })
   }
 
-  const conflicts = detectConflicts(result)
+  // Fetch all events across all calendars for the given date
+  const events = await getEventsForDate(session.accessToken, targetDate)
+
+  const conflicts = detectConflicts(events)
 
   return NextResponse.json({
-    date: dateStr ?? new Date().toISOString().split('T')[0],
-    tz: tz ?? 'UTC',
-    total_events: result.length,
+    date: targetDate.toISOString().split('T')[0],
+    tz,
+    total_events: events.length,
     conflicts,
     conflict_count: conflicts.length,
   })

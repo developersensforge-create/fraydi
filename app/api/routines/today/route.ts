@@ -1,99 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/authOptions'
-import { createServerSupabase } from '@/lib/supabaseServer'
+import { createClient } from '@supabase/supabase-js'
 
-async function getFamilyId(email: string): Promise<string | null> {
-  const supabase = createServerSupabase()
-  const { data } = await supabase
-    .from('profiles')
-    .select('family_id')
-    .eq('email', email)
-    .single()
-  return data?.family_id ?? null
+const getSupabaseAdmin = () => createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
+)
+
+type Routine = {
+  id: string
+  family_id: string
+  assigned_to: string | null
+  title: string
+  description: string | null
+  recurrence: 'daily' | 'weekly' | 'monthly'
+  days_of_week: number[]
+  time_of_day: string | null
+  reminder_minutes_before: number
+  active: boolean
+  created_at: string
+}
+
+function routineAppliesToday(routine: Routine, date: Date): boolean {
+  const dow = date.getDay() // 0=Sun
+  if (routine.recurrence === 'daily') return true
+  if (routine.recurrence === 'weekly') return routine.days_of_week?.includes(dow) ?? false
+  if (routine.recurrence === 'monthly') return routine.days_of_week?.includes(date.getDate()) ?? false
+  return false
 }
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const family_id = await getFamilyId(session.user.email)
-  if (!family_id) {
-    return NextResponse.json({ error: 'No family found' }, { status: 404 })
-  }
-
   const { searchParams } = req.nextUrl
-  const dateStr = searchParams.get('date') // YYYY-MM-DD optional
+  const family_id = searchParams.get('family_id')
+  const dateStr = searchParams.get('date') // YYYY-MM-DD
+
+  if (!family_id) {
+    return NextResponse.json({ error: 'family_id required' }, { status: 400 })
+  }
 
   const targetDate = dateStr ? new Date(dateStr) : new Date()
   if (isNaN(targetDate.getTime())) {
     return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, { status: 400 })
   }
 
-  const todayDow = targetDate.getDay() // 0=Sun
-
-  const supabase = createServerSupabase()
-
-  // Fetch all active routines for this family with member info
-  const { data: routines, error: routinesError } = await supabase
+  const { data, error } = await getSupabaseAdmin()
     .from('routines')
-    .select(`
-      *,
-      family_members (
-        id,
-        name,
-        role,
-        color
-      )
-    `)
+    .select('*')
     .eq('family_id', family_id)
     .eq('active', true)
 
-  if (routinesError) return NextResponse.json({ error: routinesError.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Filter routines relevant for today
-  const todayRoutines = (routines ?? []).filter((r) => {
-    if (r.frequency === 'daily') return true
-    if (r.frequency === 'weekly') return Array.isArray(r.days_of_week) && r.days_of_week.includes(todayDow)
-    if (r.frequency === 'before_event') return true // always surface; event-specific logic handled on frontend
-    return false
-  })
+  const todayRoutines = (data as Routine[]).filter((r) => routineAppliesToday(r, targetDate))
 
-  // Fetch gear reminders from member_equipment (only non-external reminders)
-  const { data: equipment, error: equipError } = await supabase
-    .from('member_equipment')
-    .select(`
-      id,
-      name,
-      description,
-      remind_external_only,
-      family_member_id,
-      family_members (
-        id,
-        name,
-        role,
-        color
-      )
-    `)
-    .eq('family_id', family_id)
-    .eq('remind_external_only', false)
-
-  if (equipError) return NextResponse.json({ error: equipError.message }, { status: 500 })
-
-  const gearReminders = (equipment ?? []).map((item: any) => ({
-    type: 'gear' as const,
-    id: item.id,
-    item_name: item.name,
-    description: item.description,
-    member_name: item.family_members?.name ?? null,
-    family_member_id: item.family_member_id,
-  }))
-
-  return NextResponse.json({
-    routines: todayRoutines,
-    gear_reminders: gearReminders,
-    date: targetDate.toISOString().split('T')[0],
-  })
+  return NextResponse.json({ routines: todayRoutines, date: targetDate.toISOString().split('T')[0] })
 }
