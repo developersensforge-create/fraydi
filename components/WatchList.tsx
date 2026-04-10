@@ -4,49 +4,40 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type WatchEvent = {
   id: string
-  watch_source_id: string
   title: string
-  description?: string
   event_date?: string
   event_time?: string
-  location?: string
-  url?: string
+  price?: string
   interest_level: 'watch' | 'interested' | 'hot'
-  added_to_calendar: boolean
   source?: { name: string; color: string }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 const COLOR_DOTS: Record<string, string> = {
-  indigo: 'bg-indigo-400',
-  green:  'bg-green-400',
-  blue:   'bg-blue-400',
-  amber:  'bg-amber-400',
-  red:    'bg-red-400',
-  purple: 'bg-purple-400',
+  indigo: 'bg-indigo-400', green: 'bg-green-400', blue: 'bg-blue-400',
+  amber: 'bg-amber-400', red: 'bg-red-400', purple: 'bg-purple-400',
 }
 
 function colorDot(color?: string) {
-  if (!color) return 'bg-gray-300'
-  return COLOR_DOTS[color] ?? 'bg-gray-400'
+  return COLOR_DOTS[color ?? ''] ?? 'bg-gray-400'
 }
 
-function formatDate(dateStr?: string) {
+function toLocalDateStr(dateStr?: string) {
   if (!dateStr) return null
-  try {
-    const d = new Date(dateStr)
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-  } catch {
-    return dateStr
-  }
+  // dateStr is YYYY-MM-DD — treat as local date (no UTC conversion)
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d)
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function formatDay(d: Date) {
+  const today = new Date(); today.setHours(0,0,0,0)
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
+  d.setHours(0,0,0,0)
+  if (d.getTime() === today.getTime()) return 'Today'
+  if (d.getTime() === tomorrow.getTime()) return 'Tomorrow'
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+}
 
 export default function WatchList() {
   const [events, setEvents] = useState<WatchEvent[]>([])
@@ -55,32 +46,42 @@ export default function WatchList() {
 
   useEffect(() => {
     async function load() {
-      setLoading(true)
-      setError(false)
+      setLoading(true); setError(false)
       try {
-        // First try hot events
-        let res = await fetch('/api/watch/events?interest_level=hot&limit=5')
+        const res = await fetch('/api/watch/events?limit=50')
         if (!res.ok) throw new Error()
-        let json = await res.json()
-        let data: WatchEvent[] = Array.isArray(json) ? json : json.events || []
-
-        // Fall back to interested if no hot events
-        if (data.length === 0) {
-          res = await fetch('/api/watch/events?interest_level=interested&limit=5')
-          if (!res.ok) throw new Error()
-          json = await res.json()
-          data = Array.isArray(json) ? json : json.events || []
-        }
-
+        const json = await res.json()
+        const data: WatchEvent[] = Array.isArray(json) ? json : (json.events ?? [])
         setEvents(data)
-      } catch {
-        setError(true)
-      } finally {
-        setLoading(false)
-      }
+      } catch { setError(true) }
+      finally { setLoading(false) }
     }
     load()
   }, [])
+
+  // Partition events
+  const today = new Date(); today.setHours(0,0,0,0)
+  const in7days = new Date(today); in7days.setDate(today.getDate() + 7)
+
+  const todayEvents = events.filter(e => {
+    const d = toLocalDateStr(e.event_date)
+    return d && d.getTime() === today.getTime()
+  })
+
+  const weekEvents = events.filter(e => {
+    const d = toLocalDateStr(e.event_date)
+    return d && d >= today && d <= in7days
+  })
+
+  const nextUpEvent = events
+    .filter(e => {
+      const d = toLocalDateStr(e.event_date)
+      return d && d > today
+    })
+    .sort((a, b) => (a.event_date ?? '').localeCompare(b.event_date ?? ''))[0]
+
+  const displayEvents = todayEvents.length > 0 ? todayEvents : []
+  const weekCount = weekEvents.length
 
   return (
     <Card variant="bordered">
@@ -88,11 +89,18 @@ export default function WatchList() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-base">📡</span>
-            <h2 className="text-base font-semibold text-gray-900">On Your Radar</h2>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 leading-tight">On Your Radar</h2>
+              {!loading && !error && weekCount > 0 && (
+                <p className="text-xs text-[#f96400] font-medium mt-0.5">
+                  {weekCount} event{weekCount !== 1 ? 's' : ''} this week
+                </p>
+              )}
+            </div>
           </div>
           <Link
             href="/watch"
-            className="text-xs font-semibold text-[#f96400] hover:bg-orange-50 px-2 py-1 rounded-lg transition-colors"
+            className="text-xs font-semibold text-[#f96400] hover:bg-orange-50 px-2 py-1 rounded-lg transition-colors flex-shrink-0"
           >
             See all →
           </Link>
@@ -102,7 +110,7 @@ export default function WatchList() {
       <CardBody>
         {loading ? (
           <div className="space-y-2">
-            {[1, 2, 3].map(i => (
+            {[1, 2].map(i => (
               <div key={i} className="flex gap-2 items-center animate-pulse">
                 <div className="w-2 h-2 rounded-full bg-gray-200 flex-shrink-0" />
                 <div className="flex-1 space-y-1">
@@ -112,44 +120,54 @@ export default function WatchList() {
               </div>
             ))}
           </div>
-        ) : error || events.length === 0 ? (
+        ) : error ? (
+          <p className="text-sm text-gray-400 text-center py-3">Could not load radar events.</p>
+        ) : events.length === 0 ? (
+          // No sources / no events at all
           <div className="text-center py-4">
-            <p className="text-sm text-gray-400">
-              {error ? 'Could not load radar events.' : 'Nothing on radar yet.'}
-            </p>
-            <Link
-              href="/watch"
-              className="mt-2 inline-block text-xs font-semibold text-[#f96400] hover:underline"
-            >
+            <p className="text-sm text-gray-400">Nothing on radar yet.</p>
+            <Link href="/watch" className="mt-2 inline-block text-xs font-semibold text-[#f96400] hover:underline">
               Add a source →
             </Link>
           </div>
-        ) : (
+        ) : displayEvents.length > 0 ? (
+          // Today has events
           <ul className="space-y-2">
-            {events.map(event => {
-              const dateStr = formatDate(event.event_date)
-              const dot = colorDot(event.source?.color)
-              return (
-                <li key={event.id} className="flex items-start gap-2.5 py-1">
-                  <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 leading-snug truncate">{event.title}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {dateStr && (
-                        <span className="text-xs text-gray-400">{dateStr}</span>
-                      )}
-                      {event.interest_level === 'hot' && (
-                        <span className="text-xs">🔥</span>
-                      )}
-                      {event.interest_level === 'interested' && (
-                        <span className="text-xs">⭐</span>
-                      )}
-                    </div>
+            {displayEvents.slice(0, 4).map(event => (
+              <li key={event.id} className="flex items-start gap-2.5 py-0.5">
+                <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${colorDot(event.source?.color)}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900 leading-snug truncate">{event.title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {event.event_time && <span className="text-xs text-[#f96400] font-medium">🕐 {event.event_time}</span>}
+                    {event.price && <span className="text-xs text-gray-400">💰 {event.price}</span>}
+                    {event.interest_level === 'hot' && <span className="text-xs">🔥</span>}
                   </div>
-                </li>
-              )
-            })}
+                </div>
+              </li>
+            ))}
+            {displayEvents.length > 4 && (
+              <li className="text-xs text-gray-400 pl-4.5">+{displayEvents.length - 4} more today</li>
+            )}
           </ul>
+        ) : (
+          // No events today — show "nothing today" + next-up teaser
+          <div className="space-y-3">
+            <p className="text-sm text-gray-400 text-center">Nothing on today's radar.</p>
+            {nextUpEvent && (
+              <div className="bg-orange-50 border border-orange-100 rounded-xl px-3 py-2.5">
+                <p className="text-xs text-gray-400 mb-0.5">Next up</p>
+                <p className="text-sm font-semibold text-gray-900 leading-snug truncate">{nextUpEvent.title}</p>
+                <p className="text-xs text-[#f96400] font-medium mt-0.5">
+                  {(() => {
+                    const d = toLocalDateStr(nextUpEvent.event_date)
+                    return d ? formatDay(d) : nextUpEvent.event_date
+                  })()}
+                  {nextUpEvent.event_time ? ` · ${nextUpEvent.event_time}` : ''}
+                </p>
+              </div>
+            )}
+          </div>
         )}
       </CardBody>
     </Card>
