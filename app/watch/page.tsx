@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Navbar from '@/components/Navbar'
+import Link from 'next/link'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 
 type WatchSource = {
@@ -206,7 +207,7 @@ export default function WatchPage() {
       <div className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${source.active ? 'bg-green-400' : 'bg-gray-300'}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-gray-900 truncate">{source.name}</p>
+          <Link href={`/watch/${source.id}`} className="text-sm font-semibold text-gray-900 truncate hover:text-[#f96400] transition-colors">{source.name}</Link>
           <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md flex-shrink-0">
             {TYPE_LABELS[source.type] ?? source.type}
           </span>
