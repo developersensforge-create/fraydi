@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
 
   const { data: kidSources } = await db
     .from('calendar_sources')
-    .select('id, name, owner_member_name, color')
+    .select('id, name, owner_name, owner_member_name, color')
     .eq('family_id', myProfile.family_id)
     .eq('owner_type', 'kid')
     .eq('active', true)
@@ -127,7 +127,7 @@ export async function GET(req: NextRequest) {
       start, end,
       windowStart: new Date(start.getTime() - BUFFER_MS),
       windowEnd: new Date(end.getTime() + BUFFER_MS),
-      kidName: source?.owner_member_name ?? source?.name ?? 'Kid',
+      kidName: source?.owner_name ?? source?.owner_member_name ?? source?.name ?? 'Kid',
       color: source?.color ?? '#6366f1',
     }
   })
