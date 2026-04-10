@@ -12,26 +12,65 @@ export interface ParsedEvent {
   location: string | null
 }
 
-function parseIcalDate(val: string): string {
-  // Strip params like TZID=America/New_York: prefix
-  const v = val.includes(':') ? val.split(':').slice(1).join(':') : val
+// Windows timezone ID → IANA mapping
+const WIN_TO_IANA: Record<string, string> = {
+  'Eastern Standard Time': 'America/New_York',
+  'Eastern Daylight Time': 'America/New_York',
+  'Central Standard Time': 'America/Chicago',
+  'Central Daylight Time': 'America/Chicago',
+  'Mountain Standard Time': 'America/Denver',
+  'Pacific Standard Time': 'America/Los_Angeles',
+  'Pacific Daylight Time': 'America/Los_Angeles',
+  'China Standard Time': 'Asia/Shanghai',
+  'UTC': 'UTC',
+  'Greenwich Standard Time': 'UTC',
+}
+
+function localToUTC(localStr: string, ianaZone: string): string {
+  const asUTC = new Date(localStr + 'Z')
+  const fmt = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: ianaZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  })
+  const inZone = fmt.format(asUTC).replace(' ', 'T')
+  const diff = asUTC.getTime() - new Date(inZone + 'Z').getTime()
+  return new Date(asUTC.getTime() + diff).toISOString()
+}
+
+function parseIcalDate(rawLine: string): string {
+  // rawLine can be full line "DTSTART;TZID=Eastern Standard Time:20260410T090000"
+  // or just value "20260410T090000Z"
+  let tzid: string | null = null
+  let v = rawLine
+
+  if (rawLine.includes(':')) {
+    const ci = rawLine.indexOf(':')
+    const keyPart = rawLine.slice(0, ci)
+    v = rawLine.slice(ci + 1)
+    const tzMatch = keyPart.match(/TZID=([^;:]+)/i)
+    if (tzMatch) tzid = tzMatch[1].trim()
+  }
+
+  if (!v || v.length < 8) return new Date().toISOString()
 
   if (v.length === 8) {
-    // All-day date: YYYYMMDD
     return `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}T00:00:00Z`
   }
 
-  // DATE-TIME: 20240101T120000Z or 20240101T120000
-  const y = v.slice(0, 4)
-  const mo = v.slice(4, 6)
-  const d = v.slice(6, 8)
-  const h = v.slice(9, 11)
-  const mi = v.slice(11, 13)
-  const s = v.slice(13, 15)
-  const utc = v.endsWith('Z') ? 'Z' : 'Z'
+  const y = v.slice(0, 4), mo = v.slice(4, 6), d = v.slice(6, 8)
+  const h = v.slice(9, 11), mi = v.slice(11, 13), s = v.slice(13, 15) || '00'
+
+  if (v.endsWith('Z')) {
+    try { return new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}Z`).toISOString() } catch {}
+  }
+
+  if (tzid) {
+    const iana = WIN_TO_IANA[tzid] ?? tzid
+    try { return localToUTC(`${y}-${mo}-${d}T${h}:${mi}:${s}`, iana) } catch {}
+  }
 
   try {
-    return new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}${utc}`).toISOString()
+    return new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}Z`).toISOString()
   } catch {
     return new Date().toISOString()
   }
