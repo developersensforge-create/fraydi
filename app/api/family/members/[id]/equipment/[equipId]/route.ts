@@ -15,7 +15,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { name, description, remind_external_only } = body
+    const { name, description, remind_external_only, event_keywords } = body
 
     const db = createServerSupabase()
 
@@ -33,6 +33,7 @@ export async function PATCH(
     if (name?.trim()) updates.name = name.trim()
     if (description !== undefined) updates.description = description?.trim() || null
     if (remind_external_only !== undefined) updates.remind_external_only = remind_external_only
+    if (event_keywords !== undefined) updates.event_keywords = Array.isArray(event_keywords) ? event_keywords : []
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })

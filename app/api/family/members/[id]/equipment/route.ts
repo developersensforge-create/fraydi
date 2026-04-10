@@ -57,7 +57,7 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { name, description, remind_external_only } = body
+    const { name, description, remind_external_only, event_keywords } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
@@ -95,6 +95,7 @@ export async function POST(
         name: name.trim(),
         description: description?.trim() || null,
         remind_external_only: remind_external_only ?? false,
+        event_keywords: Array.isArray(event_keywords) ? event_keywords : [],
       })
       .select()
       .single()
