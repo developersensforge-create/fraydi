@@ -38,7 +38,7 @@ export async function GET(_req: NextRequest) {
   // Get all equipment for this family
   const { data: equipment, error: equipError } = await supabase
     .from('member_equipment')
-    .select('id, name, description, remind_external_only, family_member_id')
+    .select('id, name, description, remind_external_only, event_keywords, family_member_id')
     .eq('family_id', family_id)
 
   if (equipError) return NextResponse.json({ error: equipError.message }, { status: 500 })
@@ -46,7 +46,7 @@ export async function GET(_req: NextRequest) {
   // Group equipment by family member
   const memberMap = new Map<string, {
     member: { id: string; name: string; role: string; color: string }
-    equipment: Array<{ id: string; name: string; description: string | null; remind_external_only: boolean }>
+    equipment: Array<{ id: string; name: string; description: string | null; remind_external_only: boolean; event_keywords?: string[] }>
   }>()
 
   for (const m of (members ?? [])) {
@@ -64,12 +64,13 @@ export async function GET(_req: NextRequest) {
         name: item.name,
         description: item.description,
         remind_external_only: item.remind_external_only ?? false,
+        event_keywords: (item as any).event_keywords ?? [],
       })
     }
   }
 
-  // Return only members that have equipment (filter out empty)
-  const result = Array.from(memberMap.values()).filter((m) => m.equipment.length > 0)
+  // Return all members (including those with 0 items so they can add gear)
+  const result = Array.from(memberMap.values())
 
   return NextResponse.json({ gear_summary: result })
 }
