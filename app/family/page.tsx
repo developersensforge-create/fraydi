@@ -60,14 +60,16 @@ function EditMemberModal({
       const body: Record<string, string> = {}
       if (name.trim() !== member.name) body.name = name.trim()
       if (!isKid && role !== member.role) body.role = role
-      if (Object.keys(body).length === 0) { onClose(); return }
+      if (!isKid && email.trim() !== (member.email ?? '')) body.email = email.trim()
 
-      const res = await fetch(`/api/family/members/${member.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+      if (Object.keys(body).length > 0) {
+        const res = await fetch(`/api/family/members/${member.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+      }
       onSaved()
       onClose()
     } catch (e: unknown) {
@@ -75,29 +77,22 @@ function EditMemberModal({
     } finally { setSaving(false) }
   }
 
-  const updateEmail = async () => {
-    if (!email.trim()) return
-    setSaving(true); setError(null)
-    try {
-      const res = await fetch(`/api/family/members/${member.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
-      setSuccess('Email updated')
-      onSaved()
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to update email')
-    } finally { setSaving(false) }
-  }
-
   const resendInvite = async () => {
     setResending(true); setError(null); setSuccess(null)
     try {
+      // Save email first if it changed
+      if (email.trim() && email.trim() !== (member.email ?? '')) {
+        const saveRes = await fetch(`/api/family/members/${member.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim() }),
+        })
+        if (!saveRes.ok) { const d = await saveRes.json(); throw new Error(d.error) }
+        onSaved()
+      }
       const res = await fetch(`/api/family/members/${member.id}/resend-invite`, { method: 'POST' })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
-      setSuccess('Invite resent ✓')
+      setSuccess('Invite sent to ' + email + ' ✓')
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to resend invite')
     } finally { setResending(false) }
@@ -138,23 +133,17 @@ function EditMemberModal({
             </div>
           )}
 
-          {/* Email + resend (adults only) */}
+          {/* Email + send invite (adults only) */}
           {!isKid && (
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Invite Email</label>
-              <div className="flex gap-2">
-                <input className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  type="email" placeholder="email@example.com"
-                  value={email} onChange={e => setEmail(e.target.value)} />
-                <button onClick={updateEmail} disabled={saving}
-                  className="text-xs px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium text-gray-600 disabled:opacity-50">
-                  Save
-                </button>
-              </div>
+              <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                type="email" placeholder="email@example.com"
+                value={email} onChange={e => setEmail(e.target.value)} />
               {email && member.invite_status !== 'accepted' && (
                 <button onClick={resendInvite} disabled={resending}
-                  className="mt-1.5 text-xs text-[#f96400] hover:underline disabled:opacity-50">
-                  {resending ? 'Resending…' : '📨 Resend invite email'}
+                  className="mt-2 w-full text-sm font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-2 rounded-xl disabled:opacity-50 transition">
+                  {resending ? '⏳ Sending…' : '📨 ' + (member.email ? 'Resend Invite' : 'Save Email & Send Invite')}
                 </button>
               )}
             </div>
