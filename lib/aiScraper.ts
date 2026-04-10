@@ -96,9 +96,11 @@ async function scrapeMyrec(baseUrl: string): Promise<ScrapedEvent[]> {
           // Extract time
           const eventTime = parseTime(text)
 
-          // Extract location — look for "Location:" or "Facility:" patterns
-          const locMatch = text.match(/(?:Location|Facility|Held at)[:\s]+([A-Z][^.|\n]{5,60})/)
-          const location = locMatch ? locMatch[1].trim() : null
+          // Extract location — look for "Location:" or "Facility:" followed by a real venue name
+          const locMatch = text.match(/(?:Location|Facility|Held at|Venue)[:\s]+([A-Z][A-Za-z0-9 &'.,-]{5,60?})(?:\s{2,}|,\s*[A-Z]{2}|\d{5}|$)/)
+          const rawLoc = locMatch ? locMatch[1].trim() : null
+          // Skip if it looks like nav text
+          const location = (rawLoc && !rawLoc.includes('Dog Park') && !rawLoc.includes('Archery') && rawLoc.length < 60) ? rawLoc : null
 
           // Extract description — first meaningful sentence after nav
           const descMatch = text.match(/(?:Activity|Program|Description)[:\s]+([A-Z][^.!?]{20,200}[.!?])/)
