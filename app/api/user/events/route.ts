@@ -74,7 +74,8 @@ export async function GET(req: NextRequest) {
   const { start: dayStart, end: dayEnd } = getDayBounds(dateParam, tz);
 
   // ── 1. Google Calendar events ──────────────────────────────────────────────
-  const googleResult = await getEventsForDate(session.accessToken, dateParam, tz);
+  const [y, m, d] = dateParam.split('-').map(Number)
+  const googleResult = await getEventsForDate(session.accessToken, new Date(y, m - 1, d, 12, 0, 0));
   const googleEvents: UnifiedEvent[] = [];
 
   if (!("error" in googleResult)) {
