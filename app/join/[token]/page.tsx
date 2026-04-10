@@ -38,12 +38,17 @@ export default function JoinPage() {
       .catch(() => { setNotFound(true); setLoading(false) })
   }, [token])
 
-  // If not signed in, save token and redirect to login
-  const signInToAccept = () => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('pending_invite_token', token)
+  // Auto-accept when already signed in (e.g. after OAuth redirect back to this page)
+  useEffect(() => {
+    if (session && invite && !joining) {
+      acceptInvite()
     }
-    router.push('/login')
+  }, [session, invite])
+
+  // If not signed in, sign in with Google and redirect back to this join page after
+  const signInToAccept = async () => {
+    const { signIn } = await import('next-auth/react')
+    await signIn('google', { callbackUrl: `/join/${token}` })
   }
 
   const acceptInvite = async () => {
