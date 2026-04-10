@@ -16,10 +16,10 @@ type WatchSource = {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  ical_url: 'iCal URL',
-  rss: 'RSS Feed',
-  manual: 'Manual',
-  ical: 'iCal URL',
+  ical_url: 'iCal Feed',
+  url: 'Web Page (scrape)',
+  manual: 'Web Page (scrape)',
+  ical: 'iCal Feed',
 }
 
 function formatSynced(ts?: string | null): string {
@@ -41,7 +41,7 @@ type AddSourceModalProps = {
 
 function AddSourceModal({ onClose, onAdd }: AddSourceModalProps) {
   const [name, setName] = useState('')
-  const [type, setType] = useState('ical_url')
+  const [type, setType] = useState('url')
   const [url, setUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -84,12 +84,12 @@ function AddSourceModal({ onClose, onAdd }: AddSourceModalProps) {
               onChange={(e) => setType(e.target.value)}
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#f96400]"
             >
-              <option value="ical_url">iCal URL</option>
-              <option value="manual">Manual</option>
+              <option value="url">Web Page (AI scrape)</option>
+              <option value="ical_url">iCal Feed (.ics URL)</option>
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">URL {type === 'ical_url' ? '*' : '(optional)'}</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">URL *</label>
             <input
               type="url"
               value={url}
