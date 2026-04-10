@@ -137,6 +137,51 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* People bar — my calendar + family members */}
+        {session && (
+          <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+            {/* Me */}
+            <div className="flex items-center gap-2 bg-white border border-[#f96400] rounded-xl px-3 py-2 flex-shrink-0">
+              <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-[#f96400]">
+                {(session.user?.name ?? 'R').charAt(0)}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-900 leading-none">{session.user?.name?.split(' ')[0] ?? 'Me'}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{events.filter(e => !e.isAllDay).length} events</p>
+              </div>
+            </div>
+            {/* Family members with tokens */}
+            {memberEvents.length > 0 && (() => {
+              const members = new Map<string, { name: string; color: string; count: number }>()
+              for (const me of memberEvents) {
+                if (!members.has(me.memberId)) members.set(me.memberId, { name: me.memberName, color: me.memberColor, count: 0 })
+                members.get(me.memberId)!.count++
+              }
+              return Array.from(members.values()).map((m, i) => (
+                <div key={i} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-shrink-0">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    style={{ backgroundColor: m.color }}>
+                    {m.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-900 leading-none">{m.name.split(' ')[0]}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{m.count} events</p>
+                  </div>
+                </div>
+              ))
+            })()}
+            {memberEvents.length === 0 && (
+              <div className="flex items-center gap-2 bg-gray-50 border border-dashed border-gray-200 rounded-xl px-3 py-2 flex-shrink-0">
+                <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs text-gray-400">L</div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 leading-none">Liwei</p>
+                  <p className="text-[10px] text-gray-300 mt-0.5">needs to open app</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Desktop layout: sidebar + main + right */}
         <div className="flex flex-col lg:flex-row gap-6">
 
