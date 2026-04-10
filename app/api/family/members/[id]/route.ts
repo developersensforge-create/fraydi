@@ -15,7 +15,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { name, color, role, calendar_access } = body
+    const { name, color, role, calendar_access, email } = body
 
     const db = createServerSupabase()
 
@@ -34,6 +34,7 @@ export async function PATCH(
     if (color) updates.color = color
     if (role) updates.role = role
     if (calendar_access) updates.calendar_access = calendar_access
+    if (email !== undefined) updates.email = email || null
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
