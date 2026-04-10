@@ -16,28 +16,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'family_id required' }, { status: 400 })
   }
 
-  // Build ±7 day window around the given date (or today if not provided)
-  const center = dateStr ? new Date(dateStr) : new Date()
+  // Build date window: today through +30 days by default, or ±7 around given date
+  const center = dateStr ? new Date(dateStr + 'T12:00:00Z') : new Date()
   if (isNaN(center.getTime())) {
     return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, { status: 400 })
   }
 
   const rangeStart = new Date(center)
-  rangeStart.setDate(rangeStart.getDate() - 7)
-  rangeStart.setHours(0, 0, 0, 0)
+  rangeStart.setDate(rangeStart.getDate() - (dateStr ? 7 : 0))
+  const startStr = rangeStart.toISOString().split('T')[0]
 
   const rangeEnd = new Date(center)
-  rangeEnd.setDate(rangeEnd.getDate() + 7)
-  rangeEnd.setHours(23, 59, 59, 999)
+  rangeEnd.setDate(rangeEnd.getDate() + 30)
+  const endStr = rangeEnd.toISOString().split('T')[0]
 
   const { data, error } = await getSupabaseAdmin()
     .from('watch_events')
     .select('*, watch_sources(name, color)')
     .eq('family_id', family_id)
     .eq('dismissed', false)
-    .gte('start_time', rangeStart.toISOString())
-    .lte('start_time', rangeEnd.toISOString())
-    .order('start_time', { ascending: true })
+    .gte('event_date', startStr)
+    .lte('event_date', endStr)
+    .order('event_date', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ events: data, tz })
