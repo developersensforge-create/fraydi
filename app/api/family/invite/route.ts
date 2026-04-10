@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     // Send invite email via Resend
     const { error: emailError } = await resend.emails.send({
-      from: 'Fraydi <noreply@dayryz.com>',
+      from: process.env.FRAYDI_FROM_EMAIL ?? 'Fraydi <noreply@dayryz.com>',
       to: invitedEmail,
       subject: `${inviterName} invited you to join their family on Fraydi`,
       html: `
