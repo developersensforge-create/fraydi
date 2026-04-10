@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const getSupabaseAdmin = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
-)
+import { createServerSupabase } from '@/lib/supabaseServer'
 
 // GET /api/watch/sources/[id]/events — all events for a specific watch source
 export async function GET(
@@ -12,13 +7,18 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const sourceId = params.id
+  const db = createServerSupabase()
 
-  const { data, error } = await getSupabaseAdmin()
+  const { data, error } = await db
     .from('watch_events')
     .select('id, title, event_date, event_time, location, description, price, tags, url, interest_level')
     .eq('watch_source_id', sourceId)
     .order('event_date', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ events: data ?? [] })
+  if (error) {
+    console.error('[watch/sources/[id]/events]', error.message, 'sourceId:', sourceId)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ events: data ?? [], sourceId, count: data?.length ?? 0 })
 }
