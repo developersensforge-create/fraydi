@@ -35,7 +35,11 @@ function toFamilyEvent(e: CalendarEvent): FamilyEvent {
 }
 
 function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0]
+  // Use local date (not UTC) to avoid timezone shift — e.g. 9pm EDT = next day UTC
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 function displayDate(date: Date): string {
@@ -64,7 +68,7 @@ export default function DashboardPage() {
     if (!session) return
     setLoading(true)
     setSynced(false)
-    fetch('/api/calendar/events')
+    fetch(`/api/calendar/events?date=${formatDate(currentDate)}`)
       .then(r => r.json())
       .then(data => {
         if (data.events) {
