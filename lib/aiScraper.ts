@@ -26,29 +26,75 @@ function normalizeUrl(url: string): string {
   return url
 }
 
+/** For myrec.com: extract program IDs from the list page, then fetch each detail page */
+async function scrapeMyrec(baseUrl: string): Promise<string> {
+  try {
+    const u = new URL(baseUrl)
+    const origin = u.origin + '/info/activities'
+
+    // Fetch the list page
+    const listRes = await fetch(`${origin}/default.aspx?type=activities`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fraydi/1.0)' },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!listRes.ok) return ''
+    const listHtml = await listRes.text()
+
+    // Extract all unique ProgramIDs from links like: program_details.aspx?ProgramID=29848
+    const programIds = [...new Set([...listHtml.matchAll(/program_details\.aspx\?ProgramID=(\d+)/g)].map(m => m[1]))]
+    if (programIds.length === 0) return ''
+
+    // Fetch up to 15 detail pages concurrently (limit to avoid overloading)
+    const detailTexts = await Promise.all(
+      programIds.slice(0, 15).map(async (pid) => {
+        try {
+          const res = await fetch(`${origin}/program_details.aspx?ProgramID=${pid}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fraydi/1.0)' },
+            signal: AbortSignal.timeout(8000),
+          })
+          if (!res.ok) return ''
+          const html = await res.text()
+          return html
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(500, 4000) // skip nav, get content
+        } catch { return '' }
+      })
+    )
+
+    return detailTexts.filter(Boolean).join('\n\n---\n\n').slice(0, 12000)
+  } catch { return '' }
+}
+
 export async function scrapeEventsFromUrl(
   url: string,
   interestKeywords: string[] = []
 ): Promise<ScrapedEvent[]> {
-  const fetchUrl = normalizeUrl(url)
-
-  // Step 1: Fetch the page content
+  // Step 1: Fetch the page content — use deep scraper for known platforms
   let pageText = ''
   try {
-    const res = await fetch(fetchUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fraydi/1.0)' },
-      signal: AbortSignal.timeout(10000),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const html = await res.text()
-    // Strip HTML tags, collapse whitespace, limit to 8000 chars
-    pageText = html
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 8000)
+    // myrec.com gets deep scraping: list + detail pages for date/time/fee
+    if (url.includes('myrec.com')) {
+      pageText = await scrapeMyrec(url)
+    } else {
+      const fetchUrl = normalizeUrl(url)
+      const res = await fetch(fetchUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fraydi/1.0)' },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      pageText = html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 8000)
+    }
   } catch (e) {
     console.error('[aiScraper] fetch failed:', e)
     return []
