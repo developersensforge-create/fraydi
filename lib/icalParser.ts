@@ -108,7 +108,7 @@ export async function fetchAndParseIcal(icalUrl: string): Promise<ParsedEvent[]>
 
   const response = await fetch(normalizedUrl, {
     headers: { 'User-Agent': 'Fraydi/1.0 iCal Sync' },
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(45_000),
   })
 
   if (!response.ok) {
