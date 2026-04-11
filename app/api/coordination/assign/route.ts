@@ -26,12 +26,12 @@ export async function GET(req: NextRequest) {
   const dayStart = `${dateParam}T00:00:00Z`
   const dayEnd = `${dateParam}T23:59:59Z`
 
+  // Use left join (not inner) — Google Calendar kid events may not be in calendar_events table
+  // Filter by updated_at or just return all for the family and let frontend filter by event_id
   const { data: assignments } = await db
     .from('coordination_assignments')
-    .select('*, calendar_events!inner(id, title, start_time, end_time, calendar_source_id)')
+    .select('id, event_id, assigned_to, assigned_by, status, family_id')
     .eq('family_id', myProfile.family_id)
-    .gte('calendar_events.start_time', dayStart)
-    .lte('calendar_events.start_time', dayEnd)
 
   return NextResponse.json({ assignments: assignments ?? [] })
 }
@@ -57,12 +57,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, cleared: true })
   }
 
+  // 'I drive', 'both', or 'none' → confirmed immediately; spouse assign → pending (awaiting confirm)
+  const isConfirmedImmediately = assigned_to_profile_id === myProfile.id ||
+    assigned_to_profile_id === 'both' || assigned_to_profile_id === 'none'
+  const assignStatus = isConfirmedImmediately ? 'confirmed' : 'pending'
+
   const { data: assignment } = await db.from('coordination_assignments').upsert({
     event_id,
     family_id: myProfile.family_id,
     assigned_to: assigned_to_profile_id,
     assigned_by: myProfile.id,
-    status: 'pending',
+    status: assignStatus,
   }, { onConflict: 'event_id,family_id' }).select().single()
 
   // Notify assignee if it's someone else
