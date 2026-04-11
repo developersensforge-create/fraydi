@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
   if (color !== undefined) payload.color = color;
   if (visible !== undefined) payload.visible = visible;
 
-  const res = await supa("/user_google_cal_prefs", {
+  const res = await supa("/user_google_cal_prefs?on_conflict=user_email,google_calendar_id", {
     method: "POST",
     headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
     body: JSON.stringify(payload),
@@ -99,7 +99,8 @@ export async function PATCH(req: NextRequest) {
   if (owner_type !== undefined) payload.owner_type = owner_type;
   if (owner_name !== undefined) payload.owner_name = owner_name;
 
-  const res = await supa("/user_google_cal_prefs", {
+  // Use on_conflict to ensure upsert merges correctly on the unique (user_email, google_calendar_id) constraint
+  const res = await supa("/user_google_cal_prefs?on_conflict=user_email,google_calendar_id", {
     method: "POST",
     headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
     body: JSON.stringify(payload),
