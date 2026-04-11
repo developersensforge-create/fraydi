@@ -778,66 +778,74 @@ export default function CalendarsPage() {
 
         {/* ── Family Member Calendars section ── */}
         {familyMembers.filter(m => m.role !== 'me' && m.role !== 'kid').length > 0 && (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <p className="text-sm font-semibold text-gray-900">Family Member Calendars</p>
-              <p className="text-xs text-gray-400 mt-0.5">Choose which of their calendars to include in conflict detection</p>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {familyMembers.filter(m => m.role !== 'me' && m.role !== 'kid').map(member => (
-                <div key={member.id} className="px-4 py-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">Family Member Calendars</p>
+            {familyMembers.filter(m => m.role !== 'me' && m.role !== 'kid').map(member => {
+              const memberKey = member.email ?? member.id
+              const cals = memberCalendars[memberKey]
+              return (
+                <div key={member.id} className="mb-3">
+                  {/* Member header card */}
+                  <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
                         style={{ backgroundColor: member.color ?? '#6366f1' }}>
                         {member.name.charAt(0)}
                       </div>
-                      <span className="text-sm font-medium text-gray-900">{member.name}</span>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{member.name}</p>
+                        <p className="text-xs text-gray-400">{cals ? `${cals.filter(c=>c.visible).length} of ${cals.length} enabled` : 'Tap to load calendars'}</p>
+                      </div>
                     </div>
-                    {!memberCalendars[member.email ?? member.id] && (
+                    {!cals && (
                       <button onClick={() => fetchMemberCalendars(member)}
-                        disabled={memberCalLoading === (member.email ?? member.id)}
-                        className="text-xs text-[#f96400] hover:underline disabled:opacity-50">
-                        {memberCalLoading === (member.email ?? member.id) ? 'Loading…' : 'Load calendars →'}
+                        disabled={memberCalLoading === memberKey}
+                        className="text-xs font-medium text-[#f96400] border border-orange-200 bg-orange-50 px-3 py-1.5 rounded-lg hover:bg-orange-100 transition disabled:opacity-50">
+                        {memberCalLoading === memberKey ? 'Loading…' : 'Load →'}
                       </button>
                     )}
                   </div>
-                  {memberCalendars[member.email ?? member.id] && (
-                    <div className="space-y-2 ml-8">
-                      {memberCalendars[member.email ?? member.id].map(cal => (
-                        <div key={cal.id} className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cal.color }} />
-                            <span className="text-xs text-gray-700 truncate">{cal.name}</span>
-                            {cal.primary && <span className="text-[10px] text-gray-400 flex-shrink-0">primary</span>}
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {cal.visible && (
-                              <select
-                                value={cal.assignedToMemberId ?? ''}
-                                onChange={e => assignMemberCalendar(member.email ?? member.id, member.email, cal.id, e.target.value || null)}
-                                className="text-[10px] border border-gray-200 rounded-lg px-1.5 py-0.5 text-gray-600 focus:outline-none focus:ring-1 focus:ring-[#f96400] bg-white"
-                              >
-                                <option value="">— {member.name}</option>
-                                {familyMembers.filter(m => m.role !== 'me').map(m => (
-                                  <option key={m.id} value={m.id}>{m.name}</option>
-                                ))}
-                              </select>
-                            )}
-                            <label className="flex items-center gap-1 flex-shrink-0 cursor-pointer">
-                              <input type="checkbox" checked={cal.visible}
-                                onChange={e => toggleMemberCalendar(member.email ?? member.id, member.email, cal.id, e.target.checked)}
-                                className="rounded accent-[#f96400] w-3.5 h-3.5" />
-                              <span className="text-[10px] text-gray-400">{cal.visible ? 'On' : 'Off'}</span>
-                            </label>
-                          </div>
+                  {/* Sub-calendar rows — same card style as iCal sources */}
+                  {cals && cals.map(cal => (
+                    <div key={cal.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-1 flex items-center gap-3">
+                      {/* Color dot */}
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: cal.color + '22', border: `2px solid ${cal.color}` }}>
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cal.color }} />
+                      </div>
+                      {/* Name + meta */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">
+                          {cal.name}
+                          {cal.primary && <span className="ml-1.5 text-[10px] text-gray-400 font-normal">primary</span>}
+                        </p>
+                        <p className="text-xs text-gray-400">{cal.visible ? 'Included in conflict detection' : 'Not included'}</p>
+                      </div>
+                      {/* Assign dropdown */}
+                      {cal.visible && (
+                        <select
+                          value={cal.assignedToMemberId ?? ''}
+                          onChange={e => assignMemberCalendar(memberKey, member.email, cal.id, e.target.value || null)}
+                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-1 focus:ring-[#f96400] bg-white flex-shrink-0"
+                        >
+                          <option value="">— {member.name}</option>
+                          {familyMembers.filter(m => m.role !== 'me').map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      {/* Toggle */}
+                      <label className="flex items-center gap-1.5 flex-shrink-0 cursor-pointer">
+                        <div onClick={() => toggleMemberCalendar(memberKey, member.email, cal.id, !cal.visible)}
+                          className={`w-10 h-6 rounded-full transition-colors cursor-pointer flex items-center px-1 ${cal.visible ? 'bg-[#f96400]' : 'bg-gray-200'}`}>
+                          <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${cal.visible ? 'translate-x-4' : 'translate-x-0'}`} />
                         </div>
-                      ))}
+                      </label>
                     </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+              )
+            })}
           </div>
         )}
 
