@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
   // Get viewer's saved prefs for this member's calendars
   const { data: prefs } = await db
     .from('family_member_cal_prefs')
-    .select('google_calendar_id, display_name, visible')
+    .select('google_calendar_id, display_name, visible, assigned_to_member_id')
     .eq('viewer_profile_id', myProfile.id)
     .eq('member_profile_id', memberProfileId)
 
@@ -93,7 +93,8 @@ export async function GET(req: NextRequest) {
       name: pref?.display_name ?? cal.summary ?? 'Calendar',
       color: cal.backgroundColor ?? '#6366f1',
       primary: cal.primary ?? false,
-      visible: pref?.visible ?? true, // default visible
+      visible: pref?.visible ?? false, // default off — user explicitly enables
+      assignedToMemberId: (pref as any)?.assigned_to_member_id ?? null,
     }
   })
 
@@ -104,7 +105,7 @@ export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions) as any
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { member_profile_id, member_email, google_calendar_id, visible, display_name } = await req.json()
+  const { member_profile_id, member_email, google_calendar_id, visible, display_name, assigned_to_member_id } = await req.json()
   if (!google_calendar_id) return NextResponse.json({ error: 'google_calendar_id required' }, { status: 400 })
 
   let resolvedMemberProfileId = member_profile_id
@@ -124,8 +125,9 @@ export async function PATCH(req: NextRequest) {
     viewer_profile_id: myProfile.id,
     member_profile_id: resolvedMemberProfileId,
     google_calendar_id,
-    visible: visible ?? true,
+    visible: visible ?? false,
     display_name: display_name ?? null,
+    assigned_to_member_id: assigned_to_member_id ?? null,
   }, { onConflict: 'viewer_profile_id,member_profile_id,google_calendar_id' })
 
   return NextResponse.json({ ok: true })

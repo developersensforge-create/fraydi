@@ -201,7 +201,7 @@ export default function CalendarsPage() {
   const [showGoogleColorPicker, setShowGoogleColorPicker] = useState<string | null>(null)
   // Family members for owner picker
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
-  const [memberCalendars, setMemberCalendars] = useState<Record<string, Array<{id:string;name:string;color:string;primary:boolean;visible:boolean}>>>({})
+  const [memberCalendars, setMemberCalendars] = useState<Record<string, Array<{id:string;name:string;color:string;primary:boolean;visible:boolean;assignedToMemberId:string|null}>>>({})
   const [memberCalLoading, setMemberCalLoading] = useState<string | null>(null)
 
   useEffect(() => {
@@ -272,6 +272,21 @@ export default function CalendarsPage() {
     const body = memberEmail
       ? { member_email: memberEmail, google_calendar_id: calId, visible }
       : { member_profile_id: memberKey, google_calendar_id: calId, visible }
+    await fetch('/api/family/member-calendars', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  async function assignMemberCalendar(memberKey: string, memberEmail: string | undefined, calId: string, assignedToMemberId: string | null) {
+    setMemberCalendars(prev => ({
+      ...prev,
+      [memberKey]: (prev[memberKey] ?? []).map(c => c.id === calId ? { ...c, assignedToMemberId } : c)
+    }))
+    const body = memberEmail
+      ? { member_email: memberEmail, google_calendar_id: calId, assigned_to_member_id: assignedToMemberId }
+      : { member_profile_id: memberKey, google_calendar_id: calId, assigned_to_member_id: assignedToMemberId }
     await fetch('/api/family/member-calendars', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -796,12 +811,26 @@ export default function CalendarsPage() {
                             <span className="text-xs text-gray-700 truncate">{cal.name}</span>
                             {cal.primary && <span className="text-[10px] text-gray-400 flex-shrink-0">primary</span>}
                           </div>
-                          <label className="flex items-center gap-1.5 flex-shrink-0 cursor-pointer">
-                            <input type="checkbox" checked={cal.visible}
-                              onChange={e => toggleMemberCalendar(member.email ?? member.id, member.email, cal.id, e.target.checked)}
-                              className="rounded accent-[#f96400] w-3.5 h-3.5" />
-                            <span className="text-[10px] text-gray-400">{cal.visible ? 'On' : 'Off'}</span>
-                          </label>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {cal.visible && (
+                              <select
+                                value={cal.assignedToMemberId ?? ''}
+                                onChange={e => assignMemberCalendar(member.email ?? member.id, member.email, cal.id, e.target.value || null)}
+                                className="text-[10px] border border-gray-200 rounded-lg px-1.5 py-0.5 text-gray-600 focus:outline-none focus:ring-1 focus:ring-[#f96400] bg-white"
+                              >
+                                <option value="">— {member.name}</option>
+                                {familyMembers.filter(m => m.role !== 'me').map(m => (
+                                  <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                              </select>
+                            )}
+                            <label className="flex items-center gap-1 flex-shrink-0 cursor-pointer">
+                              <input type="checkbox" checked={cal.visible}
+                                onChange={e => toggleMemberCalendar(member.email ?? member.id, member.email, cal.id, e.target.checked)}
+                                className="rounded accent-[#f96400] w-3.5 h-3.5" />
+                              <span className="text-[10px] text-gray-400">{cal.visible ? 'On' : 'Off'}</span>
+                            </label>
+                          </div>
                         </div>
                       ))}
                     </div>
