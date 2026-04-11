@@ -98,29 +98,32 @@ function EventBlock({
   const isShort = h < 40
   const assignedTo = assignment?.assigned_to
 
-  // Width offset for stacking: each layer shifts 5% from alternating sides
-  const OFFSET = 5 // percent
-  const leftPct = stackIndex % 2 === 0 ? 0 : stackIndex * OFFSET
-  const rightPct = stackIndex % 2 === 1 ? 0 : stackIndex * OFFSET
+  // Width offset for stacking: each layer shifts 15% from alternating sides
+  const OFFSET = 15 // percent
+  const leftPct = stackIndex % 2 === 0 ? 0 : Math.min(stackIndex * OFFSET, 30)
+  const rightPct = stackIndex % 2 === 1 ? 0 : Math.min(stackIndex * OFFSET, 30)
 
   const dutyLabel = !assignedTo ? null :
-    assignedTo === 'both' ? 'Both cover' :
-    assignedTo === 'none' ? 'No cover needed' :
-    assignedTo === myProfileId ? 'I cover' :
-    `${spouseName?.split(' ')[0]} covers`
+    assignedTo === 'both' ? 'Both drive' :
+    assignedTo === 'none' ? 'No driver needed' :
+    assignedTo === myProfileId ? 'I drive' :
+    `${spouseName?.split(' ')[0]} drives`
+
+  const isNoParent = assignedTo === 'none'
 
   return (
     <div
-      className="absolute rounded-lg overflow-hidden border"
+      className="absolute rounded-lg overflow-hidden"
       style={{
         top,
         height: Math.max(h, 20),
         left: `${leftPct}%`,
         right: `${rightPct}%`,
-        backgroundColor: color + '20',
-        borderColor: color,
-        borderLeftWidth: 3,
+        backgroundColor: isNoParent ? 'transparent' : color + '20',
+        border: isNoParent ? `2px dashed ${color}60` : `1px solid ${color}`,
+        borderLeft: isNoParent ? `2px dashed ${color}60` : `3px solid ${color}`,
         zIndex: 10 + stackIndex,
+        opacity: isNoParent ? 0.6 : 1,
       }}
     >
       <div className="h-full flex flex-col p-1.5 overflow-hidden">
@@ -139,7 +142,7 @@ function EventBlock({
                   onClick={() => setDropdownOpen(o => !o)}
                   className="text-[9px] font-semibold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200 flex items-center gap-0.5"
                 >
-                  On duty? ▾
+                  Driver? ▾
                 </button>
               ) : (
                 <button
@@ -153,10 +156,10 @@ function EventBlock({
               {dropdownOpen && (
                 <div className="absolute right-0 top-5 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-[120px]">
                   {[
-                    { val: myProfileId, label: 'I cover' },
+                    { val: myProfileId, label: 'I drive' },
                     ...(spouseId ? [{ val: spouseId, label: `${spouseName?.split(' ')[0]} covers` }] : []),
-                    { val: 'both', label: 'Both cover' },
-                    { val: 'none', label: 'No cover needed' },
+                    { val: 'both', label: 'Both drive' },
+                    { val: 'none', label: 'No parent needed' },
                     { val: null, label: 'Clear' },
                   ].map(opt => (
                     <button key={opt.val ?? 'clear'}
@@ -262,17 +265,17 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, onAssign }: {
         <div className="relative flex-shrink-0">
           <button onClick={() => setOpen(o => !o)}
             className="text-[9px] font-semibold bg-orange-100 text-orange-700 px-2 py-1 rounded-lg border border-orange-200 flex items-center gap-0.5">
-            On duty? ▾
+            Driver? ▾
           </button>
           {open && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
               <div className="absolute right-0 top-6 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-[140px]">
                 {[
-                  { val: myProfileId, label: 'I cover' },
+                  { val: myProfileId, label: 'I drive' },
                   ...(spouseProfile ? [{ val: spouseProfile.id, label: `${spouseProfile.name.split(' ')[0]} covers` }] : []),
-                  { val: 'both', label: 'Both cover' },
-                  { val: 'none', label: 'No cover needed' },
+                  { val: 'both', label: 'Both drive' },
+                  { val: 'none', label: 'No parent needed' },
                 ].map(opt => (
                   <button key={opt.val}
                     onClick={() => { onAssign(ev.id, opt.val); setOpen(false) }}
