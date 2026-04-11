@@ -285,23 +285,25 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
               | { type: 'kid-full'; ev: CalEvent }
               | { type: 'kid-assigned'; ev: CalEvent; assignment: Assignment }
 
-            // All unique times
+            // Build all events with numeric timestamps for correct sort
             const myAdult = myEvents.filter(e => !e.isAllDay)
             const spouseTimedDeduped = deduplicatedSpouseEvents
 
-            // Collect all timestamps
-            const times = new Set([
-              ...myAdult.map(e => e.start.slice(0,16)),
-              ...spouseTimedDeduped.map(e => e.start.slice(0,16)),
-              ...kidEvents.map(e => e.start.slice(0,16)),
-            ])
-            const sortedTimes = Array.from(times).sort()
+            // Collect all unique ISO start times, sorted by actual Date value (not string)
+            const allStarts = [
+              ...myAdult.map(e => e.start),
+              ...spouseTimedDeduped.map(e => e.start),
+              ...kidEvents.map(e => e.start),
+            ]
+            const uniqueMs = Array.from(new Set(allStarts.map(s => new Date(s).getTime())))
+            uniqueMs.sort((a, b) => a - b)
 
             const rows: Row[] = []
-            for (const t of sortedTimes) {
-              const myEv = myAdult.find(e => e.start.slice(0,16) === t) ?? null
-              const spouseEv = spouseTimedDeduped.find(e => e.start.slice(0,16) === t) ?? null
-              const kidsAtTime = kidEvents.filter(e => e.start.slice(0,16) === t)
+            for (const ms of uniqueMs) {
+              // Match events within a 1-minute window of this timestamp
+              const myEv = myAdult.find(e => Math.abs(new Date(e.start).getTime() - ms) < 60000) ?? null
+              const spouseEv = spouseTimedDeduped.find(e => Math.abs(new Date(e.start).getTime() - ms) < 60000) ?? null
+              const kidsAtTime = kidEvents.filter(e => Math.abs(new Date(e.start).getTime() - ms) < 60000)
 
               if (myEv || spouseEv) rows.push({ type: 'pair', myEv, spouseEv })
 
