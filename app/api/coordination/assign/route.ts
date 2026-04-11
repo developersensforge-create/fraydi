@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   const { data: assignments } = await db
     .from('coordination_assignments')
-    .select('*, calendar_events(id, title, start_time, end_time, calendar_source_id)')
+    .select('*, calendar_events!inner(id, title, start_time, end_time, calendar_source_id)')
     .eq('family_id', myProfile.family_id)
     .gte('calendar_events.start_time', dayStart)
     .lte('calendar_events.start_time', dayEnd)

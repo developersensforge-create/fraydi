@@ -7,6 +7,16 @@ import EventCard, { FamilyEvent } from '@/components/EventCard'
 import CoordinationAlert from '@/components/CoordinationAlert'
 import WatchList from '@/components/WatchList'
 import FamilyCalendarGrid from '@/components/FamilyCalendarGrid'
+import { Component, ReactNode } from 'react'
+
+class GridWrapper extends Component<{date: string; myProfileId: string}, {error: boolean}> {
+  constructor(props: {date: string; myProfileId: string}) { super(props); this.state = { error: false } }
+  static getDerivedStateFromError() { return { error: true } }
+  render() {
+    if (this.state.error) return <div className="py-6 text-center text-gray-400 text-sm">Calendar loading failed — try refreshing</div>
+    return <FamilyCalendarGrid date={this.props.date} myProfileId={this.props.myProfileId} />
+  }
+}
 import RoutinesCard from '@/components/RoutinesCard'
 
 type ViewMode = 'Today' | 'Week' | 'Month'
@@ -279,7 +289,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
                 ) : myProfileId ? (
-                  <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId} />
+                  <GridWrapper date={formatDate(currentDate)} myProfileId={myProfileId} />
                 ) : (
                   <div className="py-6 text-center text-gray-400 text-sm">Loading…</div>
                 )}

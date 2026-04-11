@@ -135,10 +135,11 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
   useEffect(() => {
     const load = async () => {
       setLoading(true)
+      try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
       const [evRes, memberRes, assignRes, notifRes] = await Promise.all([
-        fetch(`/api/user/events?date=${date}&tz=${encodeURIComponent(tz)}`).then(r => r.json()),
+        fetch(`/api/user/events?date=${date}&tz=${encodeURIComponent(tz)}`).then(r => r.json()).catch(() => ({ events: [] })),
         fetch(`/api/family/member-events?date=${date}`).then(r => r.json()).catch(() => ({ memberEvents: [] })),
         fetch(`/api/coordination/assign?date=${date}`).then(r => r.json()).catch(() => ({ assignments: [] })),
         fetch('/api/notifications').then(r => r.json()).catch(() => ({ notifications: [] })),
@@ -169,7 +170,11 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
         setSpouseProfile({ id: first.memberId, name: first.memberName, color: first.memberColor })
       }
 
-      setLoading(false)
+      } catch (e) {
+        console.error('[FamilyCalendarGrid] load error', e)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [date])
