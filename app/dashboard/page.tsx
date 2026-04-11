@@ -27,7 +27,7 @@ type UnifiedEvent = {
 function toFamilyEvent(e: UnifiedEvent): FamilyEvent & { startIso?: string; endIso?: string } {
   const startTime = e.isAllDay
     ? 'All day'
-    : new Date(e.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : new Date(e.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })
   return {
     id: e.id,
     time: startTime,

@@ -44,9 +44,13 @@ type Notification = {
   reference_id?: string
 }
 
-function formatTime(iso: string): string {
-  try { return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) }
-  catch { return '' }
+function formatTime(iso: string, tz?: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit',
+      timeZone: tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    })
+  } catch { return '' }
 }
 
 function initials(name: string) {

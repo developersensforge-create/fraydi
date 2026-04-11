@@ -15,7 +15,7 @@ export type FamilyEvent = {
 function getEndTime(endIso?: string): string {
   if (!endIso) return ''
   try {
-    return new Date(endIso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    return new Date(endIso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })
   } catch { return '' }
 }
 
