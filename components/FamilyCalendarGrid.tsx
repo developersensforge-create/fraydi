@@ -141,8 +141,8 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
       const [evRes, memberRes, assignRes, notifRes] = await Promise.all([
         fetch(`/api/user/events?date=${date}&tz=${encodeURIComponent(tz)}`).then(r => r.json()).catch(() => ({ events: [] })),
         fetch(`/api/family/member-events?date=${date}`).then(r => r.json()).catch(() => ({ memberEvents: [] })),
-        fetch(`/api/coordination/assign?date=${date}`).then(r => r.json()).catch(() => ({ assignments: [] })),
-        fetch('/api/notifications').then(r => r.json()).catch(() => ({ notifications: [] })),
+        myProfileId !== 'loading' ? fetch(`/api/coordination/assign?date=${date}`).then(r => r.json()).catch(() => ({ assignments: [] })) : Promise.resolve({ assignments: [] }),
+        myProfileId !== 'loading' ? fetch('/api/notifications').then(r => r.json()).catch(() => ({ notifications: [] })) : Promise.resolve({ notifications: [] }),
       ])
 
       const allEvents: CalEvent[] = (evRes.events ?? []).map((e: any) => ({

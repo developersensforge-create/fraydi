@@ -93,7 +93,7 @@ export default function DashboardPage() {
     // Ensure current user's Google token is stored for family sharing
     fetch('/api/user/sync-token', { method: 'POST' }).catch(() => {})
     // Load profile ID for coordination features
-    fetch('/api/user/profile').then(r => r.json()).then(d => { if (d.family_id) setMyProfileId(d.id ?? null) }).catch(() => {})
+    fetch('/api/user/profile').then(r => r.json()).then(d => { if (d.id) setMyProfileId(d.id) }).catch(() => {})
 
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const dateStr = formatDate(currentDate)
@@ -288,10 +288,8 @@ export default function DashboardPage() {
                     <p className="text-2xl mb-2">📅</p>
                     <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
-                ) : myProfileId ? (
-                  <GridWrapper date={formatDate(currentDate)} myProfileId={myProfileId} />
                 ) : (
-                  <div className="py-6 text-center text-gray-400 text-sm">Loading…</div>
+                  <GridWrapper date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} />
                 )}
               </div>
             </div>
