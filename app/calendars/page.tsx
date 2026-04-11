@@ -34,6 +34,7 @@ type FamilyMember = {
   name: string
   role: 'me' | 'spouse' | 'kid' | 'other'
   color: string
+  email?: string
 }
 
 function roleEmoji(role: string) {
@@ -246,28 +247,35 @@ export default function CalendarsPage() {
     }
   }
 
-  async function fetchMemberCalendars(memberProfileId: string) {
-    setMemberCalLoading(memberProfileId)
+  async function fetchMemberCalendars(member: FamilyMember) {
+    const key = member.email ?? member.id
+    setMemberCalLoading(key)
     try {
-      const res = await fetch(`/api/family/member-calendars?member_profile_id=${memberProfileId}`)
+      const param = member.email
+        ? `member_email=${encodeURIComponent(member.email)}`
+        : `member_profile_id=${member.id}`
+      const res = await fetch(`/api/family/member-calendars?${param}`)
       if (res.ok) {
         const data = await res.json()
-        setMemberCalendars(prev => ({ ...prev, [memberProfileId]: data.calendars ?? [] }))
+        setMemberCalendars(prev => ({ ...prev, [key]: data.calendars ?? [] }))
       }
     } catch { /* ignore */ } finally {
       setMemberCalLoading(null)
     }
   }
 
-  async function toggleMemberCalendar(memberProfileId: string, calId: string, visible: boolean) {
+  async function toggleMemberCalendar(memberKey: string, memberEmail: string | undefined, calId: string, visible: boolean) {
     setMemberCalendars(prev => ({
       ...prev,
-      [memberProfileId]: (prev[memberProfileId] ?? []).map(c => c.id === calId ? { ...c, visible } : c)
+      [memberKey]: (prev[memberKey] ?? []).map(c => c.id === calId ? { ...c, visible } : c)
     }))
+    const body = memberEmail
+      ? { member_email: memberEmail, google_calendar_id: calId, visible }
+      : { member_profile_id: memberKey, google_calendar_id: calId, visible }
     await fetch('/api/family/member-calendars', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ member_profile_id: memberProfileId, google_calendar_id: calId, visible }),
+      body: JSON.stringify(body),
     })
   }
 
@@ -771,17 +779,17 @@ export default function CalendarsPage() {
                       </div>
                       <span className="text-sm font-medium text-gray-900">{member.name}</span>
                     </div>
-                    {!memberCalendars[member.id] && (
-                      <button onClick={() => fetchMemberCalendars(member.id)}
-                        disabled={memberCalLoading === member.id}
+                    {!memberCalendars[member.email ?? member.id] && (
+                      <button onClick={() => fetchMemberCalendars(member)}
+                        disabled={memberCalLoading === (member.email ?? member.id)}
                         className="text-xs text-[#f96400] hover:underline disabled:opacity-50">
-                        {memberCalLoading === member.id ? 'Loading…' : 'Load calendars'}
+                        {memberCalLoading === (member.email ?? member.id) ? 'Loading…' : 'Load calendars →'}
                       </button>
                     )}
                   </div>
-                  {memberCalendars[member.id] && (
+                  {memberCalendars[member.email ?? member.id] && (
                     <div className="space-y-2 ml-8">
-                      {memberCalendars[member.id].map(cal => (
+                      {memberCalendars[member.email ?? member.id].map(cal => (
                         <div key={cal.id} className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cal.color }} />
@@ -790,7 +798,7 @@ export default function CalendarsPage() {
                           </div>
                           <label className="flex items-center gap-1.5 flex-shrink-0 cursor-pointer">
                             <input type="checkbox" checked={cal.visible}
-                              onChange={e => toggleMemberCalendar(member.id, cal.id, e.target.checked)}
+                              onChange={e => toggleMemberCalendar(member.email ?? member.id, member.email, cal.id, e.target.checked)}
                               className="rounded accent-[#f96400] w-3.5 h-3.5" />
                             <span className="text-[10px] text-gray-400">{cal.visible ? 'On' : 'Off'}</span>
                           </label>

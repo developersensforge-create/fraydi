@@ -16,8 +16,16 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions) as any
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const memberProfileId = req.nextUrl.searchParams.get('member_profile_id')
-  if (!memberProfileId) return NextResponse.json({ error: 'member_profile_id required' }, { status: 400 })
+  let memberProfileId = req.nextUrl.searchParams.get('member_profile_id')
+  const memberEmail = req.nextUrl.searchParams.get('member_email')
+
+  // Resolve profile ID from email if needed
+  if (!memberProfileId && memberEmail) {
+    const db2 = createServerSupabase()
+    const { data: mp } = await db2.from('profiles').select('id').eq('email', memberEmail).single()
+    memberProfileId = mp?.id ?? null
+  }
+  if (!memberProfileId) return NextResponse.json({ error: 'member_profile_id or member_email required' }, { status: 400 })
 
   const db = createServerSupabase()
 
@@ -96,10 +104,16 @@ export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions) as any
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { member_profile_id, google_calendar_id, visible, display_name } = await req.json()
-  if (!member_profile_id || !google_calendar_id) {
-    return NextResponse.json({ error: 'member_profile_id and google_calendar_id required' }, { status: 400 })
+  const { member_profile_id, member_email, google_calendar_id, visible, display_name } = await req.json()
+  if (!google_calendar_id) return NextResponse.json({ error: 'google_calendar_id required' }, { status: 400 })
+
+  let resolvedMemberProfileId = member_profile_id
+  if (!resolvedMemberProfileId && member_email) {
+    const db2 = createServerSupabase()
+    const { data: mp } = await db2.from('profiles').select('id').eq('email', member_email).single()
+    resolvedMemberProfileId = mp?.id
   }
+  if (!resolvedMemberProfileId) return NextResponse.json({ error: 'member_profile_id or member_email required' }, { status: 400 })
 
   const db = createServerSupabase()
   const { data: myProfile } = await db.from('profiles').select('id, family_id').eq('email', session.user.email).single()
@@ -108,7 +122,7 @@ export async function PATCH(req: NextRequest) {
   await db.from('family_member_cal_prefs').upsert({
     family_id: myProfile.family_id,
     viewer_profile_id: myProfile.id,
-    member_profile_id,
+    member_profile_id: resolvedMemberProfileId,
     google_calendar_id,
     visible: visible ?? true,
     display_name: display_name ?? null,
