@@ -7,16 +7,6 @@ import EventCard, { FamilyEvent } from '@/components/EventCard'
 import CoordinationAlert from '@/components/CoordinationAlert'
 import WatchList from '@/components/WatchList'
 import FamilyCalendarGrid from '@/components/FamilyCalendarGrid'
-import { Component, ReactNode } from 'react'
-
-class GridWrapper extends Component<{date: string; myProfileId: string}, {error: boolean}> {
-  constructor(props: {date: string; myProfileId: string}) { super(props); this.state = { error: false } }
-  static getDerivedStateFromError() { return { error: true } }
-  render() {
-    if (this.state.error) return <div className="py-6 text-center text-gray-400 text-sm">Calendar loading failed — try refreshing</div>
-    return <FamilyCalendarGrid date={this.props.date} myProfileId={this.props.myProfileId} />
-  }
-}
 import RoutinesCard from '@/components/RoutinesCard'
 
 type ViewMode = 'Today' | 'Week' | 'Month'
@@ -75,60 +65,17 @@ export default function DashboardPage() {
   const today = new Date()
   const [currentDate, setCurrentDate] = useState(today)
   const [viewMode, setViewMode] = useState<ViewMode>('Today')
-  const [events, setEvents] = useState<FamilyEvent[]>([])
-  const [memberEvents, setMemberEvents] = useState<Array<{
-    memberId: string; memberName: string; memberColor: string;
-    start: string; end: string; isAllDay: boolean; title?: string
-  }>>([])
-  const [loading, setLoading] = useState(false)
-  const [synced, setSynced] = useState(false)
-  const [calendarCount, setCalendarCount] = useState<number | null>(null)
   const [myProfileId, setMyProfileId] = useState<string | null>(null)
   const { data: session } = useSession()
 
   useEffect(() => {
     if (!session) return
-    setLoading(true)
-    setSynced(false)
-    // Ensure current user's Google token is stored for family sharing
     fetch('/api/user/sync-token', { method: 'POST' }).catch(() => {})
-    // Load profile ID for coordination features
     fetch('/api/user/profile').then(r => r.json()).then(d => { if (d.id) setMyProfileId(d.id) }).catch(() => {})
-
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const dateStr = formatDate(currentDate)
-    Promise.all([
-      fetch(`/api/user/events?date=${dateStr}&tz=${encodeURIComponent(tz)}`).then(r => r.json()),
-      fetch(`/api/family/member-events?date=${dateStr}`).then(r => r.json()).catch(() => ({ memberEvents: [] })),
-    ]).then(([myData, memberData]) => {
-      if (myData.events) {
-        setEvents(myData.events.map(toFamilyEvent))
-        setSynced(true)
-        setCalendarCount((myData.calendarSources ?? []).length || 1)
-      }
-      setMemberEvents(memberData.memberEvents ?? [])
-    }).catch(() => {}).finally(() => setLoading(false))
-  }, [session, currentDate])
+  }, [session])
 
   const isToday = formatDate(currentDate) === formatDate(today)
   const navDelta = viewMode === 'Month' ? 30 : viewMode === 'Week' ? 7 : 1
-
-  // Split all-day vs timed events
-  const allDayEvents = events.filter((e) => e.isAllDay)
-  const timedEvents = events.filter((e) => !e.isAllDay)
-
-  // Conflict detection: find my timed events that overlap with member events
-  const conflictMap = new Map<string, typeof memberEvents>()
-  for (const myEv of timedEvents) {
-    const myStart = (myEv as any).startIso as string | undefined
-    const myEnd = (myEv as any).endIso as string | undefined
-    if (!myStart || !myEnd) continue
-    const overlapping = memberEvents.filter(me => {
-      if (me.isAllDay) return false
-      return me.start < myEnd && me.end > myStart
-    })
-    if (overlapping.length > 0) conflictMap.set(myEv.id, overlapping)
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -161,38 +108,10 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-900 leading-none">{session.user?.name?.split(' ')[0] ?? 'Me'}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">{events.filter(e => !e.isAllDay).length} events</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Today</p>
               </div>
             </div>
-            {/* Family members with tokens */}
-            {memberEvents.length > 0 && (() => {
-              const members = new Map<string, { name: string; color: string; count: number }>()
-              for (const me of memberEvents) {
-                if (!members.has(me.memberId)) members.set(me.memberId, { name: me.memberName, color: me.memberColor, count: 0 })
-                members.get(me.memberId)!.count++
-              }
-              return Array.from(members.values()).map((m, i) => (
-                <div key={i} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-shrink-0">
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                    style={{ backgroundColor: m.color }}>
-                    {m.name.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-900 leading-none">{m.name.split(' ')[0]}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{m.count} events</p>
-                  </div>
-                </div>
-              ))
-            })()}
-            {memberEvents.length === 0 && (
-              <div className="flex items-center gap-2 bg-gray-50 border border-dashed border-gray-200 rounded-xl px-3 py-2 flex-shrink-0">
-                <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs text-gray-400">L</div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-400 leading-none">Liwei</p>
-                  <p className="text-[10px] text-gray-300 mt-0.5">needs to open app</p>
-                </div>
-              </div>
-            )}
+
           </div>
         )}
 
@@ -267,19 +186,7 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              {/* Event count badge */}
-              {events.length > 0 && (
-                <div className="px-5 py-2 border-b border-gray-100 flex items-center justify-between">
-                  <span className="text-xs text-gray-400">
-                    {events.length} event{events.length !== 1 ? 's' : ''}
-                  </span>
-                  {events.some((e) => e.requiresCoverage) && (
-                    <span className="text-xs font-medium text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">
-                      ⚠️ {events.filter((e) => e.requiresCoverage).length} need coverage
-                    </span>
-                  )}
-                </div>
-              )}
+
 
               {/* Family Calendar Grid — 2-column when spouse connected */}
               <div className="px-4 py-3">
@@ -289,7 +196,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
                 ) : (
-                  <GridWrapper date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} />
+                  <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} />
                 )}
               </div>
             </div>
