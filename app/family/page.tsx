@@ -320,7 +320,7 @@ export default function FamilyPage() {
           <p className="text-xs text-gray-400">{ROLE_LABELS[m.role] ?? m.role}</p>
           {m.email && <p className="text-xs text-gray-400 truncate">{m.email}</p>}
         </div>
-        {!isMe && (
+        {!isMe && m.role !== 'kid' && (
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${status.color}`}>
             {status.label}
           </span>
