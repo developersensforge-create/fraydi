@@ -32,7 +32,7 @@ export async function POST(
   let events_found = 0
   let events: unknown[] = []
 
-  if (source.type === 'url' && source.url) {
+  if (['url', 'manual'].includes(source.type) && source.url) {
     const keywords = await resolveKeywords(db, source.interest_keywords, source.family_id)
     const scraped = await scrapeEventsFromUrl(source.url, keywords)
 

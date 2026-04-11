@@ -6,31 +6,38 @@ import Navbar from '@/components/Navbar'
 import EventCard, { FamilyEvent } from '@/components/EventCard'
 import CoordinationAlert from '@/components/CoordinationAlert'
 import WatchList from '@/components/WatchList'
+import FamilyCalendarGrid from '@/components/FamilyCalendarGrid'
 import RoutinesCard from '@/components/RoutinesCard'
 
 type ViewMode = 'Today' | 'Week' | 'Month'
 
-type CalendarEvent = {
+type UnifiedEvent = {
   id: string
-  summary: string
-  start: { dateTime?: string; date?: string }
-  end: { dateTime?: string; date?: string }
-  htmlLink?: string
+  title: string
+  start: string
+  end: string
+  isAllDay: boolean
+  calendarName?: string
+  calendarColor?: string
+  source?: string
+  location?: string
+  description?: string
 }
 
-function toFamilyEvent(e: CalendarEvent): FamilyEvent {
-  const isAllDay = !e.start.dateTime
-  const startTime = e.start.dateTime
-    ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    : 'All day'
+function toFamilyEvent(e: UnifiedEvent): FamilyEvent & { startIso?: string; endIso?: string } {
+  const startTime = e.isAllDay
+    ? 'All day'
+    : new Date(e.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })
   return {
     id: e.id,
     time: startTime,
-    title: e.summary || 'Untitled event',
-    memberName: 'You',
-    memberColor: '#f96400',
+    title: e.title || 'Untitled event',
+    memberName: e.calendarName ?? 'You',
+    memberColor: e.calendarColor ?? '#f96400',
     requiresCoverage: false,
-    isAllDay,
+    isAllDay: e.isAllDay,
+    startIso: e.start,
+    endIso: e.end,
   }
 }
 
@@ -58,37 +65,17 @@ export default function DashboardPage() {
   const today = new Date()
   const [currentDate, setCurrentDate] = useState(today)
   const [viewMode, setViewMode] = useState<ViewMode>('Today')
-  const [events, setEvents] = useState<FamilyEvent[]>([])
-  const [loading, setLoading] = useState(false)
-  const [synced, setSynced] = useState(false)
-  const [calendarCount, setCalendarCount] = useState<number | null>(null)
+  const [myProfileId, setMyProfileId] = useState<string | null>(null)
   const { data: session } = useSession()
 
   useEffect(() => {
     if (!session) return
-    setLoading(true)
-    setSynced(false)
-    fetch(`/api/calendar/events?date=${formatDate(currentDate)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.events) {
-          setEvents(data.events.map(toFamilyEvent))
-          setSynced(true)
-          // Try to infer calendar count from the response
-          if (data.calendarCount) setCalendarCount(data.calendarCount)
-          else setCalendarCount(1)
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [session, currentDate])
+    fetch('/api/user/sync-token', { method: 'POST' }).catch(() => {})
+    fetch('/api/user/profile').then(r => r.json()).then(d => { if (d.id) setMyProfileId(d.id) }).catch(() => {})
+  }, [session])
 
   const isToday = formatDate(currentDate) === formatDate(today)
   const navDelta = viewMode === 'Month' ? 30 : viewMode === 'Week' ? 7 : 1
-
-  // Split all-day vs timed events
-  const allDayEvents = events.filter((e) => e.isAllDay)
-  const timedEvents = events.filter((e) => !e.isAllDay)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -96,12 +83,37 @@ export default function DashboardPage() {
 
       <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
         {/* Page header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            {isToday ? 'Good morning 👋' : 'Family Timeline'}
-          </h1>
-          <p className="text-gray-500 mt-1">Here&apos;s what&apos;s happening with your family.</p>
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+              {isToday ? `Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'} 👋` : 'Family Timeline'}
+            </h1>
+            <p className="text-sm text-gray-400 mt-0.5">{displayDate(currentDate)}</p>
+          </div>
+          {!isToday && (
+            <button onClick={() => setCurrentDate(today)}
+              className="text-xs font-semibold text-[#f96400] border border-orange-200 bg-orange-50 px-3 py-1.5 rounded-lg hover:bg-orange-100 transition">
+              Today
+            </button>
+          )}
         </div>
+
+        {/* People bar — my calendar + family members */}
+        {session && (
+          <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+            {/* Me */}
+            <div className="flex items-center gap-2 bg-white border border-[#f96400] rounded-xl px-3 py-2 flex-shrink-0">
+              <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-[#f96400]">
+                {(session.user?.name ?? 'R').charAt(0)}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-900 leading-none">{session.user?.name?.split(' ')[0] ?? 'Me'}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Today</p>
+              </div>
+            </div>
+
+          </div>
+        )}
 
         {/* Desktop layout: sidebar + main + right */}
         <div className="flex flex-col lg:flex-row gap-6">
@@ -174,79 +186,17 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              {/* Event count badge */}
-              {events.length > 0 && (
-                <div className="px-5 py-2 border-b border-gray-100 flex items-center justify-between">
-                  <span className="text-xs text-gray-400">
-                    {events.length} event{events.length !== 1 ? 's' : ''}
-                  </span>
-                  {events.some((e) => e.requiresCoverage) && (
-                    <span className="text-xs font-medium text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">
-                      ⚠️ {events.filter((e) => e.requiresCoverage).length} need coverage
-                    </span>
-                  )}
-                </div>
-              )}
 
-              {/* Timeline */}
-              <div className="px-5 py-4">
-                {loading ? (
-                  <div className="py-12 text-center">
-                    <p className="text-4xl mb-3">⏳</p>
-                    <p className="text-sm font-semibold text-gray-700">Loading events...</p>
-                    <p className="text-xs text-gray-400 mt-1">Syncing with Google Calendar</p>
-                  </div>
-                ) : !session ? (
-                  <div className="py-12 text-center">
-                    <p className="text-4xl mb-3">📅</p>
-                    <p className="text-sm font-semibold text-gray-700">No Google Calendar connected</p>
-                    <p className="text-xs text-gray-400 mt-1">Sign in with Google to see your real events</p>
-                  </div>
-                ) : events.length === 0 ? (
-                  <div className="py-12 text-center">
-                    <p className="text-4xl mb-3">📅</p>
-                    <p className="text-sm font-semibold text-gray-700">No events today</p>
-                    <p className="text-xs text-gray-400 mt-1">Your Google Calendar is connected but nothing is scheduled</p>
+
+              {/* Family Calendar Grid — 2-column when spouse connected */}
+              <div className="px-4 py-3">
+                {!session ? (
+                  <div className="py-10 text-center">
+                    <p className="text-2xl mb-2">📅</p>
+                    <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
                 ) : (
-                  <div className="relative">
-                    {/* All-day events band */}
-                    {allDayEvents.length > 0 && (
-                      <div className="mb-3 pb-3 border-b border-gray-100">
-                        {allDayEvents.map((event) => (
-                          <EventCard key={event.id} event={event} />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Timed events timeline */}
-                    {timedEvents.length > 0 && (
-                      <div className="relative">
-                        <div className="absolute left-[4.75rem] top-2 bottom-2 w-px bg-gray-100" />
-                        <div className="divide-y divide-gray-50">
-                          {timedEvents.map((event) => (
-                            <EventCard key={event.id} event={event} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Sync status bar */}
-              <div className="mx-5 mb-5 rounded-lg bg-gray-50 border border-dashed border-gray-200 px-4 py-3 text-center">
-                <p className="text-xs text-gray-400">
-                  {loading
-                    ? '⏳ Syncing calendar...'
-                    : synced
-                    ? '✅ Synced with Google Calendar'
-                    : '🗓 Connect Google Calendar to see real events'}
-                </p>
-                {synced && calendarCount !== null && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    {calendarCount} calendar{calendarCount !== 1 ? 's' : ''} synced
-                  </p>
+                  <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} />
                 )}
               </div>
             </div>

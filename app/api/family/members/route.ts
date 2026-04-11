@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
       const declineUrl = `${baseUrl}/invite/${invite_token}?decline=true`
 
       const { error: resendError } = await resend.emails.send({
-        from: 'Fraydi <noreply@dayryz.com>',
+        from: process.env.FRAYDI_FROM_EMAIL ?? 'Fraydi <noreply@dayryz.com>',
         to: email,
         subject: `${inviterName} invited you to coordinate on Fraydi`,
         html: `

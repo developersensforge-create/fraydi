@@ -1,0 +1,20 @@
+{
+  "functions": {
+    "app/api/user/calendars/route.ts": { "maxDuration": 60 },
+    "app/api/user/events/route.ts": { "maxDuration": 30 },
+    "app/api/sync/ical/route.ts": { "maxDuration": 60 },
+    "app/api/cron/sync-ical/route.ts": { "maxDuration": 300 },
+    "app/api/cron/sync-watch/route.ts": { "maxDuration": 300 },
+    "app/api/watch/sources/[id]/sync/route.ts": { "maxDuration": 60 }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/sync-ical",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/sync-watch",
+      "schedule": "0 7 * * *"
+    }
+  ]
+}

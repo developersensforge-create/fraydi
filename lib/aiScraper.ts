@@ -26,60 +26,126 @@ function normalizeUrl(url: string): string {
   return url
 }
 
-/** For myrec.com: extract program IDs from the list page, then fetch each detail page */
-async function scrapeMyrec(baseUrl: string): Promise<string> {
+function parseDate(mmddyyyy: string): string | null {
+  const m = mmddyyyy.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return null
+  return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`
+}
+
+function parseTime(text: string): string | null {
+  const m = text.match(/\b(\d{1,2}):(\d{2})\s*(AM|PM)\b/i)
+  if (!m) return null
+  return `${m[1]}:${m[2]} ${m[3].toUpperCase()}`
+}
+
+/** For myrec.com: extract all programs as structured events directly from HTML */
+async function scrapeMyrec(baseUrl: string): Promise<ScrapedEvent[]> {
   try {
     const u = new URL(baseUrl)
     const origin = u.origin + '/info/activities'
 
-    // Fetch the list page
     const listRes = await fetch(`${origin}/default.aspx?type=activities`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fraydi/1.0)' },
       signal: AbortSignal.timeout(10000),
     })
-    if (!listRes.ok) return ''
+    if (!listRes.ok) return []
     const listHtml = await listRes.text()
 
-    // Extract all unique ProgramIDs from links like: program_details.aspx?ProgramID=29848
-    const programIds = [...new Set([...listHtml.matchAll(/program_details\.aspx\?ProgramID=(\d+)/g)].map(m => m[1]))]
-    if (programIds.length === 0) return ''
+    // Extract all program IDs + names from list page
+    const programEntries: Array<{ id: string; title: string }> = []
+    const entryRe = /href="[^"]*program_details\.aspx\?ProgramID=(\d+)[^"]*"[^>]*>\s*([^<]{3,80})/gi
+    let match
+    const seen = new Set<string>()
+    while ((match = entryRe.exec(listHtml)) !== null) {
+      const pid = match[1]
+      if (seen.has(pid)) continue
+      seen.add(pid)
+      programEntries.push({ id: pid, title: match[2].trim() })
+    }
+    if (!programEntries.length) return []
 
-    // Fetch up to 15 detail pages concurrently (limit to avoid overloading)
-    const detailTexts = await Promise.all(
-      programIds.slice(0, 15).map(async (pid) => {
+    // Fetch all detail pages
+    const results = await Promise.all(
+      programEntries.slice(0, 29).map(async ({ id, title }) => {
         try {
-          const res = await fetch(`${origin}/program_details.aspx?ProgramID=${pid}`, {
+          const res = await fetch(`${origin}/program_details.aspx?ProgramID=${id}`, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fraydi/1.0)' },
             signal: AbortSignal.timeout(8000),
           })
-          if (!res.ok) return ''
+          if (!res.ok) return null
           const html = await res.text()
-          return html
+          const text = html
             .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
             .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
             .replace(/<[^>]+>/g, ' ')
             .replace(/\s+/g, ' ')
-            .trim()
-            .slice(500, 4000) // skip nav, get content
-        } catch { return '' }
+
+          // Extract dates (MM/DD/YYYY)
+          const allDates = [...text.matchAll(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/g)].map(m => m[1])
+          const futureDates = allDates
+            .map(d => parseDate(d))
+            .filter((d): d is string => d !== null && d >= new Date().toISOString().split('T')[0])
+          const nextDate = futureDates[0] ?? null
+
+          // Extract prices
+          const priceMatch = text.match(/\$([\d,.]+)\s*(Res(?:ident)?)?/)
+          const price = priceMatch
+            ? (parseFloat(priceMatch[1]) === 0 ? 'Free' : `$${priceMatch[1]}`)
+            : null
+
+          // Extract time
+          const eventTime = parseTime(text)
+
+          // Extract location — look for "Location:" or "Facility:" followed by a real venue name
+          const locMatch = text.match(/(?:Location|Facility|Held at|Venue)[:\s]+([A-Z][A-Za-z0-9 &'.,-]{5,60?})(?:\s{2,}|,\s*[A-Z]{2}|\d{5}|$)/)
+          const rawLoc = locMatch ? locMatch[1].trim() : null
+          // Skip if it looks like nav text
+          const location = (rawLoc && !rawLoc.includes('Dog Park') && !rawLoc.includes('Archery') && rawLoc.length < 60) ? rawLoc : null
+
+          // Extract description — first meaningful sentence after nav
+          const descMatch = text.match(/(?:Activity|Program|Description)[:\s]+([A-Z][^.!?]{20,200}[.!?])/)
+          const description = descMatch ? descMatch[1].trim() : null
+
+          if (!nextDate && !price && !eventTime) return null // skip programs with no useful data
+
+          const ev: ScrapedEvent = {
+            title,
+            description: description ?? undefined,
+            event_date: nextDate ?? undefined,
+            event_time: eventTime ?? undefined,
+            location: location ?? undefined,
+            url: `${origin}/program_details.aspx?ProgramID=${id}`,
+            price: price ?? undefined,
+            tags: [],
+            relevance_score: 3,
+          }
+          return ev
+        } catch { return null }
       })
     )
 
-    return detailTexts.filter(Boolean).join('\n\n---\n\n').slice(0, 12000)
-  } catch { return '' }
+    return results.filter((r): r is ScrapedEvent => r !== null)
+  } catch { return [] }
 }
 
 export async function scrapeEventsFromUrl(
   url: string,
   interestKeywords: string[] = []
 ): Promise<ScrapedEvent[]> {
-  // Step 1: Fetch the page content — use deep scraper for known platforms
+  // Step 1: Fetch the page content — use structured scraper for known platforms
+  try {
+    // myrec.com: structured per-program extraction, no AI needed
+    if (url.includes('myrec.com')) {
+      return await scrapeMyrec(url)
+    }
+  } catch (e) {
+    console.error('[aiScraper] myrec scrape failed:', e)
+    return []
+  }
+
   let pageText = ''
   try {
-    // myrec.com gets deep scraping: list + detail pages for date/time/fee
-    if (url.includes('myrec.com')) {
-      pageText = await scrapeMyrec(url)
-    } else {
+    {
       const fetchUrl = normalizeUrl(url)
       const res = await fetch(fetchUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fraydi/1.0)' },

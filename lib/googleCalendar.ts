@@ -1,11 +1,15 @@
 export type CalendarEvent = {
   id: string
   summary: string
+  description?: string
+  location?: string
   start: { dateTime?: string; date?: string; timeZone?: string }
   end: { dateTime?: string; date?: string; timeZone?: string }
   attendees?: Array<{ email: string; displayName?: string }>
   htmlLink?: string
   calendarId?: string
+  colorId?: string
+  status?: string
 }
 
 export async function listCalendars(accessToken: string): Promise<Array<{ id: string; summary: string; primary?: boolean }>> {
