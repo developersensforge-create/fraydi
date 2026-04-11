@@ -14,7 +14,7 @@ export async function GET() {
     const db = createServerSupabase()
     const { data: profile, error } = await db
       .from('profiles')
-      .select('family_id, full_name, email')
+      .select('id, family_id, full_name, email')
       .eq('email', session.user.email)
       .single()
 
@@ -22,7 +22,7 @@ export async function GET() {
       return NextResponse.json({ family_id: null })
     }
 
-    return NextResponse.json({ family_id: profile.family_id ?? null, name: (profile as any).full_name, email: profile.email })
+    return NextResponse.json({ id: profile.id, family_id: profile.family_id ?? null, name: (profile as any).full_name, email: profile.email })
   } catch (err) {
     console.error('[GET /api/user/profile]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

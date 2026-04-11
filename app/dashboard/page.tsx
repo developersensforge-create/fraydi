@@ -6,6 +6,7 @@ import Navbar from '@/components/Navbar'
 import EventCard, { FamilyEvent } from '@/components/EventCard'
 import CoordinationAlert from '@/components/CoordinationAlert'
 import WatchList from '@/components/WatchList'
+import FamilyCalendarGrid from '@/components/FamilyCalendarGrid'
 import RoutinesCard from '@/components/RoutinesCard'
 
 type ViewMode = 'Today' | 'Week' | 'Month'
@@ -72,6 +73,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false)
   const [synced, setSynced] = useState(false)
   const [calendarCount, setCalendarCount] = useState<number | null>(null)
+  const [myProfileId, setMyProfileId] = useState<string | null>(null)
   const { data: session } = useSession()
 
   useEffect(() => {
@@ -80,6 +82,8 @@ export default function DashboardPage() {
     setSynced(false)
     // Ensure current user's Google token is stored for family sharing
     fetch('/api/user/sync-token', { method: 'POST' }).catch(() => {})
+    // Load profile ID for coordination features
+    fetch('/api/user/profile').then(r => r.json()).then(d => { if (d.family_id) setMyProfileId(d.id ?? null) }).catch(() => {})
 
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const dateStr = formatDate(currentDate)
@@ -267,95 +271,17 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Timeline */}
+              {/* Family Calendar Grid — 2-column when spouse connected */}
               <div className="px-4 py-3">
-                {loading ? (
-                  <div className="py-10 text-center">
-                    <div className="inline-flex items-center gap-2 text-gray-400">
-                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-                      </svg>
-                      <span className="text-sm">Loading events…</span>
-                    </div>
-                  </div>
-                ) : !session ? (
+                {!session ? (
                   <div className="py-10 text-center">
                     <p className="text-2xl mb-2">📅</p>
                     <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
-                ) : events.length === 0 ? (
-                  <div className="py-10 text-center">
-                    <p className="text-2xl mb-2">✨</p>
-                    <p className="text-sm font-medium text-gray-600">Nothing scheduled</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Free day ahead</p>
-                  </div>
+                ) : myProfileId ? (
+                  <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId} />
                 ) : (
-                  <div>
-                    {/* All-day events */}
-                    {allDayEvents.length > 0 && (
-                      <div className="mb-2 pb-2 border-b border-gray-100">
-                        {allDayEvents.map((event) => (
-                          <EventCard key={event.id} event={event} />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Timed events — clean timeline */}
-                    <div className="space-y-0.5">
-                      {timedEvents.map((event) => {
-                        const conflicts = conflictMap.get(event.id) ?? []
-                        return (
-                          <div key={event.id}>
-                            <EventCard event={event} />
-                            {/* Liwei busy indicators — subtle */}
-                            {conflicts.map((me, i) => (
-                              <div key={i} className="flex items-center gap-2 pl-[4.75rem] py-0.5 -mt-0.5 mb-1">
-                                <div className="w-0.5 h-full rounded-full" style={{ backgroundColor: me.memberColor + '60' }} />
-                                <span className="text-[11px] font-medium" style={{ color: me.memberColor + 'cc' }}>
-                                  {me.memberName} · {me.title ?? 'busy'}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* Family availability footer */}
-                    {memberEvents.filter(me => !me.isAllDay).length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-dashed border-gray-100">
-                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Family calendar</p>
-                        {memberEvents.filter(me => !me.isAllDay).map((me, i) => (
-                          <div key={i} className="flex items-center gap-2 py-0.5">
-                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: me.memberColor + '80' }} />
-                            <span className="text-xs text-gray-400">
-                              <span className="font-medium" style={{ color: me.memberColor }}>{me.memberName}</span>
-                              {' · '}
-                              {new Date(me.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                              {me.title ? ` · ${me.title}` : ''}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Sync status bar */}
-              <div className="mx-5 mb-5 rounded-lg bg-gray-50 border border-dashed border-gray-200 px-4 py-3 text-center">
-                <p className="text-xs text-gray-400">
-                  {loading
-                    ? '⏳ Syncing calendar...'
-                    : synced
-                    ? '✅ Synced calendars'
-                    : '🗓 Connect Google Calendar to see real events'}
-                </p>
-                {synced && calendarCount !== null && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    {calendarCount} calendar{calendarCount !== 1 ? 's' : ''} synced
-                  </p>
+                  <div className="py-6 text-center text-gray-400 text-sm">Loading…</div>
                 )}
               </div>
             </div>
