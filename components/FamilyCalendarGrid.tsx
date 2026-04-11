@@ -82,86 +82,113 @@ function overlaps(a: {start:string;end:string}, b: {start:string;end:string}) {
 // ── Event block ──────────────────────────────────────────────────────────────
 function EventBlock({
   title, startIso, endIso, color, isKid, assignment, myProfileId, spouseName,
-  spouseId, spouseColor, onAssign, onSwitch, switchLoading, stackOffset = 0,
+  spouseId, onAssign, onSwitch, switchLoading,
+  stackIndex = 0, stackTotal = 1,
 }: {
   title: string; startIso: string; endIso: string; color: string
   isKid?: boolean; assignment?: Assignment | null
-  myProfileId: string; spouseName?: string; spouseId?: string; spouseColor?: string
+  myProfileId: string; spouseName?: string; spouseId?: string
   onAssign?: (id: string, to: string | null) => void
-  onSwitch?: (id: string) => void; switchLoading?: boolean; stackOffset?: number
+  onSwitch?: (id: string) => void; switchLoading?: boolean
+  stackIndex?: number; stackTotal?: number
 }) {
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const top = topPx(startIso)
   const h = heightPx(startIso, endIso)
-  const isShort = h < 36
+  const isShort = h < 40
   const assignedTo = assignment?.assigned_to
 
-  const bg = isKid && !assignment
-    ? 'bg-orange-50 border-2 border-orange-300'
-    : `border`
+  // Width offset for stacking: each layer shifts 5% from alternating sides
+  const OFFSET = 5 // percent
+  const leftPct = stackIndex % 2 === 0 ? 0 : stackIndex * OFFSET
+  const rightPct = stackIndex % 2 === 1 ? 0 : stackIndex * OFFSET
+
+  const dutyLabel = !assignedTo ? null :
+    assignedTo === 'both' ? 'Both cover' :
+    assignedTo === 'none' ? 'No cover needed' :
+    assignedTo === myProfileId ? 'I cover' :
+    `${spouseName?.split(' ')[0]} covers`
 
   return (
     <div
-      className={`absolute left-0 right-0 rounded-lg overflow-hidden ${bg}`}
+      className="absolute rounded-lg overflow-hidden border"
       style={{
-        top: top + stackOffset * 3,
-        height: Math.max(h - stackOffset * 3, 20),
-        backgroundColor: assignment ? undefined : (isKid ? undefined : color + '22'),
+        top,
+        height: Math.max(h, 20),
+        left: `${leftPct}%`,
+        right: `${rightPct}%`,
+        backgroundColor: color + '20',
         borderColor: color,
-        zIndex: 10 + stackOffset,
-        marginLeft: stackOffset * 4,
-        marginRight: stackOffset * 4,
+        borderLeftWidth: 3,
+        zIndex: 10 + stackIndex,
       }}
     >
-      <div className="h-full flex flex-col justify-between p-1.5 overflow-hidden">
-        <div className="flex items-start gap-1 min-w-0">
-          {isKid && <span className="text-xs flex-shrink-0">🧒</span>}
-          <div className="min-w-0 flex-1">
-            <p className={`font-semibold leading-tight text-gray-900 ${isShort ? 'text-[10px]' : 'text-xs'}`}
-              style={{ wordBreak: 'break-word' }}>
-              {title}
-            </p>
-            {!isShort && (
-              <p className="text-[10px] text-gray-500 mt-0.5">{fmtTime(startIso)}</p>
-            )}
+      <div className="h-full flex flex-col p-1.5 overflow-hidden">
+        {/* Top row: time + kid indicator + duty dropdown */}
+        <div className="flex items-center justify-between gap-1 flex-shrink-0">
+          <div className="flex items-center gap-1 min-w-0">
+            {isKid && <span className="text-[10px]">🧒</span>}
+            <span className="text-[10px] font-medium" style={{ color }}>{fmtTime(startIso)}</span>
           </div>
+          {/* Duty control */}
+          {isKid && onAssign && (
+            <div className="relative flex-shrink-0">
+              {!assignedTo ? (
+                // Unassigned — compact dropdown trigger
+                <button
+                  onClick={() => setDropdownOpen(o => !o)}
+                  className="text-[9px] font-semibold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200 flex items-center gap-0.5"
+                >
+                  On duty? ▾
+                </button>
+              ) : (
+                <button
+                  onClick={() => setDropdownOpen(o => !o)}
+                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                  style={{ backgroundColor: color + '30', color }}
+                >
+                  {dutyLabel} ▾
+                </button>
+              )}
+              {dropdownOpen && (
+                <div className="absolute right-0 top-5 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-[120px]">
+                  {[
+                    { val: myProfileId, label: 'I cover' },
+                    ...(spouseId ? [{ val: spouseId, label: `${spouseName?.split(' ')[0]} covers` }] : []),
+                    { val: 'both', label: 'Both cover' },
+                    { val: 'none', label: 'No cover needed' },
+                    { val: null, label: 'Clear' },
+                  ].map(opt => (
+                    <button key={opt.val ?? 'clear'}
+                      onClick={() => { onAssign(assignment?.id ?? '', opt.val); setDropdownOpen(false) }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${assignedTo === opt.val ? 'font-bold text-[#f96400]' : 'text-gray-700'}`}
+                    >
+                      {opt.val === null ? '✕ Clear' : opt.val === assignedTo ? `✓ ${opt.label}` : opt.label}
+                    </button>
+                  ))}
+                  {assignedTo && assignedTo !== 'both' && assignedTo !== 'none' && onSwitch && assignment && (
+                    <button onClick={() => { onSwitch(assignment.id); setDropdownOpen(false) }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-[#f96400] hover:bg-orange-50 border-t border-gray-100">
+                      🔄 Request switch
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Kid assignment buttons */}
-        {isKid && onAssign && !isShort && (
-          <div className="mt-1">
-            {!assignedTo ? (
-              <div className="flex flex-wrap gap-0.5">
-                <button onClick={() => onAssign(assignment?.id ?? '', myProfileId)}
-                  className="text-[9px] font-bold bg-[#f96400] text-white px-1.5 py-0.5 rounded">Me</button>
-                {spouseId && (
-                  <button onClick={() => onAssign(assignment?.id ?? '', spouseId)}
-                    className="text-[9px] font-bold bg-white text-gray-700 border border-gray-300 px-1.5 py-0.5 rounded">
-                    {spouseName?.split(' ')[0]}
-                  </button>
-                )}
-                <button onClick={() => onAssign(assignment?.id ?? '', 'both')}
-                  className="text-[9px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">Both</button>
-                <button onClick={() => onAssign(assignment?.id ?? '', 'none')}
-                  className="text-[9px] text-gray-400 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded">None</button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1">
-                <span className="text-[9px] font-semibold text-gray-600">
-                  {assignedTo === 'both' ? '✓ Both' : assignedTo === 'none' ? '✓ None' :
-                   assignedTo === myProfileId ? '✓ Me' : `✓ ${spouseName?.split(' ')[0]}`}
-                </span>
-                {onSwitch && assignment && assignedTo !== 'both' && assignedTo !== 'none' && (
-                  <button onClick={() => onSwitch(assignment.id)}
-                    disabled={switchLoading}
-                    className="text-[9px] text-[#f96400] hover:underline disabled:opacity-50">Switch?</button>
-                )}
-                <button onClick={() => onAssign(assignment?.id ?? '', null)}
-                  className="text-[9px] text-gray-300 hover:text-gray-500 ml-1">✕</button>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Title — takes remaining space */}
+        <p className={`font-semibold text-gray-900 leading-tight mt-0.5 flex-1 overflow-hidden ${isShort ? 'text-[10px]' : 'text-xs'}`}
+          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: isShort ? 1 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+          {title}
+        </p>
       </div>
+
+      {/* Click outside to close dropdown */}
+      {dropdownOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+      )}
     </div>
   )
 }
@@ -181,9 +208,10 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
     <div className="relative flex-1" style={{ height: GRID_HEIGHT }}>
       {events.map((ev, i) => {
         if (ev.isAllDay) return null
-        // Check for stacking — find other events that overlap this one
-        const overlapping = events.filter((other, j) => j < i && !other.isAllDay && overlaps(ev, other))
-        const stackOffset = overlapping.length
+        // Find all events that overlap with this one (build overlap group)
+        const overlapGroup = events.filter((other, j) => !other.isAllDay && overlaps(ev, other))
+        const stackIndex = overlapGroup.indexOf(ev)
+        const stackTotal = overlapGroup.length
         const assignment = ev.id ? assignments.find(a => a.event_id === ev.id) ?? null : null
 
         return (
@@ -192,17 +220,17 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
             title={ev.title}
             startIso={ev.start}
             endIso={ev.end}
-            color={ev.calendarColor ?? color}
-            isKid={ev.isKid}
+            color={(ev as any).calendarColor ?? color}
+            isKid={(ev as any).isKid}
             assignment={assignment}
             myProfileId={myProfileId}
             spouseName={spouseProfile?.name}
             spouseId={spouseProfile?.id}
-            spouseColor={spouseProfile?.color}
             onAssign={ev.id ? (_, to) => onAssign(ev.id!, to) : undefined}
             onSwitch={onSwitch}
             switchLoading={switchLoading === assignment?.id}
-            stackOffset={stackOffset}
+            stackIndex={stackIndex}
+            stackTotal={stackTotal}
           />
         )
       })}
@@ -210,38 +238,49 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
   )
 }
 
-// ── Full-width kid event (unassigned) ────────────────────────────────────────
+// ── Full-width kid event (unassigned) — spans both columns ──────────────────
 function KidFullWidth({ ev, myProfileId, spouseProfile, onAssign }: {
   ev: CalEvent; myProfileId: string; spouseProfile?: Profile | null
   onAssign: (eventId: string, to: string | null) => void
 }) {
+  const [open, setOpen] = useState(false)
   const top = topPx(ev.start)
-  const h = Math.max(heightPx(ev.start, ev.end), 52)
+  const h = Math.max(heightPx(ev.start, ev.end), 44)
 
   return (
-    <div className="absolute left-0 right-0 rounded-xl border-2 border-orange-300 bg-orange-50 overflow-hidden z-20 px-2 py-1.5"
+    <div className="absolute left-0 right-0 rounded-xl border-2 border-orange-300 bg-orange-50 z-20 px-2 py-1.5"
       style={{ top, height: h }}>
-      <div className="flex items-start justify-between gap-1 h-full">
+      <div className="flex items-start justify-between gap-1">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <span className="text-xs">🧒</span>
-            <p className="text-xs font-bold text-gray-900 leading-tight" style={{ wordBreak: 'break-word' }}>{ev.title}</p>
+            <span className="text-[10px] text-[#f96400] font-medium">{fmtTime(ev.start)}</span>
           </div>
-          <p className="text-[10px] text-[#f96400] font-medium mt-0.5">{fmtTime(ev.start)}</p>
+          <p className="text-xs font-bold text-gray-900 leading-tight mt-0.5">{ev.title}</p>
         </div>
-        <div className="flex flex-wrap gap-0.5 justify-end flex-shrink-0">
-          <button onClick={() => onAssign(ev.id, myProfileId)}
-            className="text-[9px] font-bold bg-[#f96400] text-white px-1.5 py-0.5 rounded">Me</button>
-          {spouseProfile && (
-            <button onClick={() => onAssign(ev.id, spouseProfile.id)}
-              className="text-[9px] font-bold bg-white text-gray-700 border border-gray-300 px-1.5 py-0.5 rounded">
-              {spouseProfile.name.split(' ')[0]}
-            </button>
+        {/* Compact dropdown */}
+        <div className="relative flex-shrink-0">
+          <button onClick={() => setOpen(o => !o)}
+            className="text-[9px] font-semibold bg-orange-100 text-orange-700 px-2 py-1 rounded-lg border border-orange-200 flex items-center gap-0.5">
+            On duty? ▾
+          </button>
+          {open && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+              <div className="absolute right-0 top-6 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-[140px]">
+                {[
+                  { val: myProfileId, label: 'I cover' },
+                  ...(spouseProfile ? [{ val: spouseProfile.id, label: `${spouseProfile.name.split(' ')[0]} covers` }] : []),
+                  { val: 'both', label: 'Both cover' },
+                  { val: 'none', label: 'No cover needed' },
+                ].map(opt => (
+                  <button key={opt.val}
+                    onClick={() => { onAssign(ev.id, opt.val); setOpen(false) }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{opt.label}</button>
+                ))}
+              </div>
+            </>
           )}
-          <button onClick={() => onAssign(ev.id, 'both')}
-            className="text-[9px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">Both</button>
-          <button onClick={() => onAssign(ev.id, 'none')}
-            className="text-[9px] text-gray-400 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded">None</button>
         </div>
       </div>
     </div>
