@@ -98,10 +98,9 @@ function EventBlock({
   const isShort = h < 40
   const assignedTo = assignment?.assigned_to
 
-  // Width offset for stacking: each layer shifts 15% from alternating sides
-  const OFFSET = 15 // percent
-  const leftPct = stackIndex % 2 === 0 ? 0 : Math.min(stackIndex * OFFSET, 30)
-  const rightPct = stackIndex % 2 === 1 ? 0 : Math.min(stackIndex * OFFSET, 30)
+  // Position is now controlled by CalColumn — EventBlock fills its container
+  const leftPct = 0
+  const rightPct = 0
 
   const status = assignment?.status
 
@@ -112,12 +111,16 @@ function EventBlock({
     `${spouseName?.split(' ')[0]} drives`
 
   // Visual states per spec
+  const isSkipped = assignedTo === 'skip'
   const isNoDriver = assignedTo === 'none'
-  const isSpousePending = !!assignedTo && assignedTo !== myProfileId && assignedTo !== 'both' && assignedTo !== 'none' && status === 'pending'
+  const isSpousePending = !!assignedTo && assignedTo !== myProfileId && assignedTo !== 'both' && assignedTo !== 'none' && assignedTo !== 'skip' && status === 'pending'
   const isSolid = !!assignedTo && (assignedTo === myProfileId || assignedTo === 'both' || status === 'confirmed')
 
+  // Skip hides the event entirely
+  if (isSkipped) return null
+
   const borderVal = isNoDriver
-    ? `2px dashed ${color}50`
+    ? `2px dashed ${color}60`
     : isSpousePending
       ? `2px dashed ${color}90`
       : isSolid
@@ -132,11 +135,11 @@ function EventBlock({
         height: Math.max(h, 20),
         left: `${leftPct}%`,
         right: `${rightPct}%`,
-        backgroundColor: isNoDriver ? 'transparent' : color + '20',
+        backgroundColor: isNoDriver ? color + '08' : color + '20',
         border: borderVal,
         borderLeft: borderVal,
         zIndex: 10 + stackIndex,
-        opacity: isNoDriver ? 0.5 : 1,
+        opacity: isNoDriver ? 0.75 : 1,
       }}
     >
       <div className="h-full flex flex-col p-1.5 overflow-hidden">
@@ -169,19 +172,25 @@ function EventBlock({
               {dropdownOpen && (
                 <div className="absolute right-0 top-5 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-[120px]">
                   {[
-                    { val: myProfileId, label: 'I drive' },
-                    ...(spouseId ? [{ val: spouseId, label: `${spouseName?.split(' ')[0]} covers` }] : []),
-                    { val: 'both', label: 'Both drive' },
-                    { val: 'none', label: 'No driver needed' },
-                    { val: null, label: 'Clear' },
+                    { val: myProfileId, label: '🚗 I drive' },
+                    ...(spouseId ? [{ val: spouseId, label: `🚗 ${spouseName?.split(' ')[0]} drives` }] : []),
+                    { val: 'both', label: '🚗 Both drive' },
+                    { val: 'none', label: '📍 No driver needed' },
+                    { val: null, label: '↩ Clear' },
                   ].map(opt => (
                     <button key={opt.val ?? 'clear'}
                       onClick={() => { onAssign(assignment?.id ?? '', opt.val); setDropdownOpen(false) }}
                       className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${assignedTo === opt.val ? 'font-bold text-[#f96400]' : 'text-gray-700'}`}
                     >
-                      {opt.val === null ? '✕ Clear' : opt.val === assignedTo ? `✓ ${opt.label}` : opt.label}
+                      {opt.val === assignedTo && opt.val !== null ? `✓ ${opt.label}` : opt.label}
                     </button>
                   ))}
+                  <button
+                    onClick={() => { onAssign(assignment?.id ?? '', 'skip'); setDropdownOpen(false) }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 border-t border-gray-100"
+                  >
+                    🚫 Skip this event
+                  </button>
                   {assignedTo && assignedTo !== 'both' && assignedTo !== 'none' && onSwitch && assignment && (
                     <button onClick={() => { onSwitch(assignment.id); setDropdownOpen(false) }}
                       className="w-full text-left px-3 py-1.5 text-xs text-[#f96400] hover:bg-orange-50 border-t border-gray-100">
@@ -210,7 +219,12 @@ function EventBlock({
 }
 
 // ── Column ───────────────────────────────────────────────────────────────────
-function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assignments, onAssign, onSwitch, switchLoading, kidEvents }: {
+// Overlap strategy (Google Calendar-style):
+// - Find overlap groups, split width equally among events in group
+// - Later start time → higher z-index (goes on top)
+// - Focused event gets full width bump; tap any event to focus it
+// - Non-focused overlapping events are semi-transparent
+function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assignments, onAssign, onSwitch, switchLoading }: {
   events: Array<{id?:string; title: string; start: string; end: string; isAllDay?: boolean; calendarColor?: string; isKid?: boolean}>
   color: string; isSpouse?: boolean; myProfileId: string
   spouseProfile?: Profile | null
@@ -218,38 +232,86 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
   onAssign: (eventId: string, to: string | null) => void
   onSwitch: (assignmentId: string) => void
   switchLoading: string | null
-  kidEvents?: CalEvent[]
 }) {
+  const [focusedId, setFocusedId] = useState<string | null>(null)
+  const timedEvents = events.filter(e => !e.isAllDay)
+
+  // Build overlap clusters: group events that overlap with any member of the group
+  const visited = new Set<number>()
+  const clusters: typeof timedEvents[] = []
+  for (let i = 0; i < timedEvents.length; i++) {
+    if (visited.has(i)) continue
+    const cluster: typeof timedEvents = [timedEvents[i]]
+    visited.add(i)
+    for (let j = i + 1; j < timedEvents.length; j++) {
+      if (!visited.has(j) && cluster.some(c => overlaps(c, timedEvents[j]))) {
+        cluster.push(timedEvents[j])
+        visited.add(j)
+      }
+    }
+    clusters.push(cluster)
+  }
+
   return (
     <div className="relative flex-1" style={{ height: GRID_HEIGHT }}>
-      {events.map((ev, i) => {
-        if (ev.isAllDay) return null
-        // Find all events that overlap with this one (build overlap group)
-        const overlapGroup = events.filter((other, j) => !other.isAllDay && overlaps(ev, other))
-        const stackIndex = overlapGroup.indexOf(ev)
-        const stackTotal = overlapGroup.length
-        const assignment = ev.id ? assignments.find(a => a.event_id === ev.id) ?? null : null
+      {clusters.map(cluster =>
+        cluster.map((ev, slotIndex) => {
+          const assignment = ev.id ? assignments.find(a => a.event_id === ev.id) ?? null : null
+          const isSkipped = assignment?.assigned_to === 'skip'
+          if (isSkipped) return null
 
-        return (
-          <EventBlock
-            key={ev.id ?? i}
-            title={ev.title}
-            startIso={ev.start}
-            endIso={ev.end}
-            color={(ev as any).calendarColor ?? color}
-            isKid={(ev as any).isKid}
-            assignment={assignment}
-            myProfileId={myProfileId}
-            spouseName={spouseProfile?.name}
-            spouseId={spouseProfile?.id}
-            onAssign={ev.id ? (_, to) => onAssign(ev.id!, to) : undefined}
-            onSwitch={onSwitch}
-            switchLoading={switchLoading === assignment?.id}
-            stackIndex={stackIndex}
-            stackTotal={stackTotal}
-          />
-        )
-      })}
+          const n = cluster.length
+          const isFocused = focusedId === (ev.id ?? ev.title)
+          const isUnfocused = focusedId !== null && !isFocused && cluster.some(c => (c.id ?? c.title) === focusedId)
+
+          // Sort cluster by start time so later = higher z
+          const sortedCluster = [...cluster].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+          const zRank = sortedCluster.indexOf(ev) // later start = higher index = higher z
+
+          // Width: split equally. Focused event gets extra width.
+          const slotW = 100 / n
+          const leftPct = slotIndex * slotW
+          const rightPct = 100 - leftPct - slotW
+
+          return (
+            <div
+              key={ev.id ?? ev.title}
+              style={{
+                position: 'absolute',
+                top: topPx(ev.start),
+                height: Math.max(heightPx(ev.start, ev.end), 20),
+                left: `${leftPct}%`,
+                right: `${rightPct}%`,
+                zIndex: isFocused ? 50 : 10 + zRank,
+                opacity: isUnfocused ? 0.45 : 1,
+                transition: 'opacity 0.15s, z-index 0s',
+              }}
+              onClick={() => setFocusedId(prev => prev === (ev.id ?? ev.title) ? null : (ev.id ?? ev.title))}
+            >
+              <EventBlock
+                title={ev.title}
+                startIso={ev.start}
+                endIso={ev.end}
+                color={(ev as any).calendarColor ?? color}
+                isKid={(ev as any).isKid}
+                assignment={assignment}
+                myProfileId={myProfileId}
+                spouseName={spouseProfile?.name}
+                spouseId={spouseProfile?.id}
+                onAssign={ev.id ? (_, to) => onAssign(ev.id!, to) : undefined}
+                onSwitch={onSwitch}
+                switchLoading={switchLoading === assignment?.id}
+                stackIndex={0}
+                stackTotal={1}
+              />
+            </div>
+          )
+        })
+      )}
+      {/* Dismiss focus on column background tap */}
+      {focusedId && (
+        <div className="absolute inset-0 z-0" onClick={() => setFocusedId(null)} />
+      )}
     </div>
   )
 }
@@ -285,15 +347,21 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, onAssign }: {
               <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
               <div className="absolute right-0 top-6 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-[140px]">
                 {[
-                  { val: myProfileId, label: 'I drive' },
-                  ...(spouseProfile ? [{ val: spouseProfile.id, label: `${spouseProfile.name.split(' ')[0]} covers` }] : []),
-                  { val: 'both', label: 'Both drive' },
-                  { val: 'none', label: 'No driver needed' },
+                  { val: myProfileId, label: '🚗 I drive' },
+                  ...(spouseProfile ? [{ val: spouseProfile.id, label: `🚗 ${spouseProfile.name.split(' ')[0]} drives` }] : []),
+                  { val: 'both', label: '🚗 Both drive' },
+                  { val: 'none', label: '📍 No driver needed' },
                 ].map(opt => (
                   <button key={opt.val}
                     onClick={() => { onAssign(ev.id, opt.val); setOpen(false) }}
                     className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{opt.label}</button>
                 ))}
+                <button
+                  onClick={() => { onAssign(ev.id, 'skip'); setOpen(false) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 border-t border-gray-100"
+                >
+                  🚫 Skip this event
+                </button>
               </div>
             </>
           )}
@@ -387,7 +455,7 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
     // Optimistic update — immediate visual feedback
     setAssignments(prev => {
       const existing = prev.find(a => a.event_id === eventId)
-      const optimisticStatus = (!profileId || profileId === myProfileId || profileId === 'both' || profileId === 'none')
+      const optimisticStatus = (!profileId || profileId === myProfileId || profileId === 'both' || profileId === 'none' || profileId === 'skip')
         ? 'confirmed' : 'pending'
       if (!profileId) return prev.filter(a => a.event_id !== eventId)
       if (existing) return prev.map(a => a.event_id === eventId ? { ...a, assigned_to: profileId, status: optimisticStatus } : a)
@@ -410,7 +478,13 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
     setSwitchLoading(null)
   }
 
-  const unassignedKids = kidEvents.filter(e => !assignments.find(a => a.event_id === e.id))
+  const unassignedKids = kidEvents.filter(e => {
+    const a = assignments.find(x => x.event_id === e.id)
+    return !a || (!a.assigned_to) // no assignment at all
+  }).filter(e => {
+    const a = assignments.find(x => x.event_id === e.id)
+    return !a || a.assigned_to !== 'skip' // hide skipped
+  })
   const assignedKids = kidEvents.filter(e => !!assignments.find(a => a.event_id === e.id))
 
   // Kid events assigned to me → my column only
