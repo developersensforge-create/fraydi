@@ -275,59 +275,185 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
         </div>
       )}
 
-      {/* Two-column timed events — kids merged inline by time */}
+      {/* Timeline — interleaved adult + kid events sorted by time */}
       {spouseProfile ? (
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          {/* My column: my events + all kid events (assigned or unassigned) sorted by time */}
-          <div>
-            {allMyTimedEvents.length === 0 ? (
-              <p className="text-xs text-gray-300 text-center py-4">Nothing today</p>
-            ) : allMyTimedEvents.map(ev => {
-              const assignment = ev.isKid ? getAssignment(ev.id) : null
-              const assignedTo = assignment?.assigned_to
-              // Kid assigned to spouse only → show in spouse col, not here
-              if (ev.isKid && assignedTo && assignedTo !== myProfileId && assignedTo !== 'both' && assignedTo !== 'none') return null
+        <div className="mb-3 space-y-1.5">
+          {(() => {
+            // Build a merged timeline with row types: 'pair' (adult) or 'kid-full' or 'kid-assigned'
+            type Row =
+              | { type: 'pair'; myEv: CalEvent | null; spouseEv: MemberEvent | null }
+              | { type: 'kid-full'; ev: CalEvent }
+              | { type: 'kid-assigned'; ev: CalEvent; assignment: Assignment }
+
+            // All unique times
+            const myAdult = myEvents.filter(e => !e.isAllDay)
+            const spouseTimedDeduped = deduplicatedSpouseEvents
+
+            // Collect all timestamps
+            const times = new Set([
+              ...myAdult.map(e => e.start.slice(0,16)),
+              ...spouseTimedDeduped.map(e => e.start.slice(0,16)),
+              ...kidEvents.map(e => e.start.slice(0,16)),
+            ])
+            const sortedTimes = Array.from(times).sort()
+
+            const rows: Row[] = []
+            for (const t of sortedTimes) {
+              const myEv = myAdult.find(e => e.start.slice(0,16) === t) ?? null
+              const spouseEv = spouseTimedDeduped.find(e => e.start.slice(0,16) === t) ?? null
+              const kidsAtTime = kidEvents.filter(e => e.start.slice(0,16) === t)
+
+              if (myEv || spouseEv) rows.push({ type: 'pair', myEv, spouseEv })
+
+              for (const kev of kidsAtTime) {
+                const assignment = getAssignment(kev.id)
+                if (!assignment) {
+                  rows.push({ type: 'kid-full', ev: kev })
+                } else {
+                  rows.push({ type: 'kid-assigned', ev: kev, assignment })
+                }
+              }
+            }
+
+            return rows.map((row, i) => {
+              if (row.type === 'pair') {
+                return (
+                  <div key={i} className="grid grid-cols-2 gap-2">
+                    <div>
+                      {row.myEv ? (
+                        <EventPill event={row.myEv} color={row.myEv.calendarColor ?? '#f96400'} myProfileId={myProfileId} />
+                      ) : <div />}
+                    </div>
+                    <div>
+                      {row.spouseEv ? (
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: spouseProfile.color }} />
+                            <p className="text-sm font-semibold text-gray-700 truncate">{row.spouseEv.title ?? 'Busy'}</p>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">{formatTime(row.spouseEv.start)}</p>
+                        </div>
+                      ) : <div />}
+                    </div>
+                  </div>
+                )
+              }
+
+              if (row.type === 'kid-full') {
+                // Unassigned — full width spanning both columns
+                return (
+                  <div key={i} className="rounded-xl border-2 border-orange-200 bg-orange-50 px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-sm">🧒</span>
+                          <p className="text-sm font-bold text-gray-900 leading-tight">{row.ev.title}</p>
+                        </div>
+                        <p className="text-xs text-[#f96400] font-medium">{formatTime(row.ev.start)}</p>
+                        <p className="text-[10px] text-orange-500 mt-0.5">Who's on duty?</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1 justify-end flex-shrink-0 mt-0.5">
+                        <button onClick={() => assignEvent(row.ev.id, myProfileId)}
+                          className="text-[11px] font-semibold bg-[#f96400] text-white px-2.5 py-1 rounded-lg">Me</button>
+                        <button onClick={() => assignEvent(row.ev.id, spouseProfile.id)}
+                          className="text-[11px] font-semibold bg-white text-gray-700 border border-gray-200 px-2.5 py-1 rounded-lg">
+                          {spouseProfile.name.split(' ')[0]}
+                        </button>
+                        <button onClick={() => assignEvent(row.ev.id, 'both')}
+                          className="text-[11px] font-semibold bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg">Both</button>
+                        <button onClick={() => assignEvent(row.ev.id, 'none')}
+                          className="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-lg">No need</button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+
+              // Assigned kid event
+              const a = row.assignment
+              const isMe = a.assigned_to === myProfileId
+              const isSpouse = a.assigned_to === spouseProfile.id
+              const isBoth = a.assigned_to === 'both'
+              const isNone = a.assigned_to === 'none'
+
               return (
-                <EventPill key={ev.id}
-                  event={ev}
-                  color={ev.isKid ? (ev.calendarColor ?? '#6366f1') : (ev.calendarColor ?? '#f96400')}
-                  onAssign={ev.isKid ? assignEvent : undefined}
-                  assignment={ev.isKid ? assignment : null}
-                  myProfileId={myProfileId}
-                  spouseProfile={spouseProfile}
-                  switchLoading={switchLoading === assignment?.id}
-                  onSwitch={ev.isKid ? requestSwitch : undefined}
-                />
-              )
-            })}
-          </div>
-          {/* Spouse column: deduplicated, plus kids assigned to spouse */}
-          <div>
-            {deduplicatedSpouseEvents.length === 0 && assignedKidEvents.filter(e => getAssignment(e.id)?.assigned_to === spouseProfile.id).length === 0 ? (
-              <p className="text-xs text-gray-300 text-center py-4">Nothing today</p>
-            ) : null}
-            {deduplicatedSpouseEvents.map((ev, i) => (
-              <div key={i} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: spouseProfile.color }} />
-                  <p className="text-sm font-semibold text-gray-700 truncate">{ev.title ?? 'Busy'}</p>
+                <div key={i} className={`grid gap-2 ${isBoth ? '' : 'grid-cols-2'}`}>
+                  {isBoth ? (
+                    // Both — full width
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">🧒</span>
+                            <p className="text-sm font-semibold text-gray-900">{row.ev.title}</p>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">{formatTime(row.ev.start)} · Both parents</p>
+                        </div>
+                        <button onClick={() => assignEvent(row.ev.id, null)} className="text-[10px] text-gray-300 hover:text-gray-500">✕</button>
+                      </div>
+                    </div>
+                  ) : isNone ? (
+                    // No need — muted full width
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 opacity-60">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">🧒</span>
+                            <p className="text-sm text-gray-500">{row.ev.title}</p>
+                          </div>
+                          <p className="text-xs text-gray-300 mt-0.5">{formatTime(row.ev.start)} · No parent needed</p>
+                        </div>
+                        <button onClick={() => assignEvent(row.ev.id, null)} className="text-[10px] text-gray-300 hover:text-gray-500">✕</button>
+                      </div>
+                    </div>
+                  ) : (
+                    // Assigned to one parent — in their column
+                    <>
+                      <div>
+                        {isMe ? (
+                          <div className="rounded-xl border border-[#f96400] bg-orange-50 px-3 py-2">
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm">🧒</span>
+                                  <p className="text-sm font-semibold text-gray-900 truncate">{row.ev.title}</p>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-0.5">{formatTime(row.ev.start)}</p>
+                              </div>
+                              <div className="flex gap-1 flex-shrink-0">
+                                {a && <button onClick={() => requestSwitch(a.id)} disabled={switchLoading === a.id} className="text-[10px] text-[#f96400] hover:underline disabled:opacity-50">Switch?</button>}
+                                <button onClick={() => assignEvent(row.ev.id, null)} className="text-[10px] text-gray-300 hover:text-gray-500">✕</button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : <div />}
+                      </div>
+                      <div>
+                        {isSpouse ? (
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm">🧒</span>
+                                  <p className="text-sm font-semibold text-gray-700 truncate">{row.ev.title}</p>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-0.5">{formatTime(row.ev.start)}</p>
+                              </div>
+                              <button onClick={() => assignEvent(row.ev.id, null)} className="text-[10px] text-gray-300 hover:text-gray-500 flex-shrink-0">✕</button>
+                            </div>
+                          </div>
+                        ) : <div />}
+                      </div>
+                    </>
+                  )}
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">{formatTime(ev.start)}</p>
-              </div>
-            ))}
-            {/* Kids assigned to spouse */}
-            {assignedKidEvents.filter(e => getAssignment(e.id)?.assigned_to === spouseProfile.id).map(ev => (
-              <EventPill key={ev.id} event={ev} color={ev.calendarColor ?? '#6366f1'}
-                onAssign={assignEvent} assignment={getAssignment(ev.id)}
-                myProfileId={myProfileId} spouseProfile={spouseProfile}
-                switchLoading={switchLoading === getAssignment(ev.id)?.id}
-                onSwitch={requestSwitch} />
-            ))}
-          </div>
+              )
+            })
+          })()}
         </div>
       ) : (
         /* Single column when no spouse connected */
-        <div className="mb-3">
+        <div className="mb-3 space-y-1.5">
           {allMyTimedEvents.map(ev => (
             <EventPill key={ev.id} event={ev}
               color={ev.isKid ? (ev.calendarColor ?? '#6366f1') : (ev.calendarColor ?? '#f96400')}
