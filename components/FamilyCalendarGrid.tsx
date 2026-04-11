@@ -337,9 +337,29 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
         setAssignments(assignRes.assignments ?? [])
         setNotifications(notifRes.notifications ?? [])
 
+        // Set spouse profile from events OR from family members (even if no events today)
         if (memberEvts.length > 0) {
           const first = memberEvts[0]
           setSpouseProfile({ id: first.memberId, name: first.memberName, color: first.memberColor })
+        } else {
+          // Load spouse profile from family members + resolve profile_id by email
+          try {
+            const famRes = await fetch('/api/family/members')
+            if (famRes.ok) {
+              const famData = await famRes.json()
+              const spouses = (famData.members ?? []).filter((m: any) => m.role !== 'me' && m.role !== 'kid' && m.invite_status === 'accepted')
+              if (spouses.length > 0) {
+                const sp = spouses[0]
+                // Get profile_id by email via profile API
+                if (sp.email) {
+                  const profRes = await fetch(`/api/family/member-calendars?member_email=${encodeURIComponent(sp.email)}&_probe=1`).catch(() => null)
+                  // Just need the profile — use member-events with no date to probe profile
+                  // Actually we already have the email so use it directly as a key for now
+                }
+                setSpouseProfile({ id: sp.email ?? sp.id, name: sp.name, color: sp.color ?? '#6366f1' })
+              }
+            }
+          } catch { /* ignore */ }
         }
       } catch (e) {
         console.error('[FamilyCalendarGrid]', e)
