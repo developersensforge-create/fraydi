@@ -31,7 +31,7 @@ type Profile = { id: string; name: string; color: string }
 type Assignment = {
   id: string
   event_id: string
-  assigned_to: string
+  assigned_to: string   // profile id OR 'none' OR 'both'
   status: string
 }
 
@@ -84,7 +84,7 @@ function EventPill({ event, color, onAssign, assignment, myProfileId, spouseProf
         {event.isKid && onAssign && myProfileId && (
           <div className="flex flex-col gap-1 items-end flex-shrink-0">
             {isUnassigned ? (
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1 justify-end">
                 <button onClick={() => onAssign(event.id, myProfileId)}
                   className="text-[10px] font-semibold bg-[#f96400] text-white px-2 py-1 rounded-lg hover:bg-[#d95400]">
                   Me
@@ -95,13 +95,24 @@ function EventPill({ event, color, onAssign, assignment, myProfileId, spouseProf
                     {spouseProfile.name.split(' ')[0]}
                   </button>
                 )}
+                <button onClick={() => onAssign(event.id, 'both')}
+                  className="text-[10px] font-semibold bg-blue-50 text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-100">
+                  Both
+                </button>
+                <button onClick={() => onAssign(event.id, 'none')}
+                  className="text-[10px] font-semibold bg-gray-50 text-gray-400 px-2 py-1 rounded-lg hover:bg-gray-100">
+                  No need
+                </button>
               </div>
             ) : (
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-gray-400">
-                  {isAssignedToMe ? '✓ You' : isAssignedToSpouse ? `✓ ${spouseProfile?.name.split(' ')[0]}` : '✓ Assigned'}
+                <span className="text-[10px] text-gray-500 font-medium">
+                  {assignment?.assigned_to === 'both' ? '✓ Both' :
+                   assignment?.assigned_to === 'none' ? '✓ No need' :
+                   isAssignedToMe ? '✓ You' :
+                   isAssignedToSpouse ? `✓ ${spouseProfile?.name.split(' ')[0]}` : '✓'}
                 </span>
-                {assignment && onSwitch && (
+                {assignment && onSwitch && assignment.assigned_to !== 'both' && assignment.assigned_to !== 'none' && (
                   <button onClick={() => onSwitch(assignment.id)}
                     disabled={switchLoading}
                     className="text-[10px] text-[#f96400] hover:underline disabled:opacity-50 ml-1">
@@ -200,14 +211,21 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
 
   const getAssignment = (eventId: string) => assignments.find(a => a.event_id === eventId) ?? null
 
-  // Sort all timed events by start time for the grid rows
-  const allTimedMyEvents = myEvents.filter(e => !e.isAllDay)
+  // Merge my events + kid events sorted by time
+  const allMyTimedEvents = [...myEvents.filter(e => !e.isAllDay), ...kidEvents]
+    .sort((a, b) => a.start.localeCompare(b.start))
+
   const allTimedSpouseEvents = spouseEvents.filter(e => !e.isAllDay)
-  const assignedKidEvents = kidEvents.filter(e => {
-    const a = getAssignment(e.id)
-    return a !== null
+
+  // Deduplicate Liwei's events: hide if same title+approx time already in my column
+  const myEventKeys = new Set(allMyTimedEvents.map(e => `${e.title.toLowerCase().trim()}::${e.start.slice(0,16)}`))
+  const deduplicatedSpouseEvents = allTimedSpouseEvents.filter(se => {
+    const key = `${(se.title ?? '').toLowerCase().trim()}::${se.start.slice(0,16)}`
+    return !myEventKeys.has(key)
   })
+
   const unassignedKidEvents = kidEvents.filter(e => !getAssignment(e.id))
+  const assignedKidEvents = kidEvents.filter(e => !!getAssignment(e.id))
 
   if (loading) {
     return <div className="text-center text-gray-400 py-8 text-sm">Loading calendars…</div>
@@ -257,30 +275,38 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
         </div>
       )}
 
-      {/* Two-column timed events */}
+      {/* Two-column timed events — kids merged inline by time */}
       {spouseProfile ? (
         <div className="grid grid-cols-2 gap-3 mb-3">
-          {/* My column */}
+          {/* My column: my events + all kid events (assigned or unassigned) sorted by time */}
           <div>
-            {allTimedMyEvents.length === 0 ? (
+            {allMyTimedEvents.length === 0 ? (
               <p className="text-xs text-gray-300 text-center py-4">Nothing today</p>
-            ) : allTimedMyEvents.map(ev => (
-              <EventPill key={ev.id} event={ev} color={ev.calendarColor ?? '#f96400'} myProfileId={myProfileId} />
-            ))}
-            {/* Assigned kids events in my column */}
-            {assignedKidEvents.filter(e => getAssignment(e.id)?.assigned_to === myProfileId).map(ev => (
-              <EventPill key={ev.id} event={ev} color={ev.calendarColor ?? '#6366f1'}
-                onAssign={assignEvent} assignment={getAssignment(ev.id)}
-                myProfileId={myProfileId} spouseProfile={spouseProfile}
-                switchLoading={switchLoading === getAssignment(ev.id)?.id}
-                onSwitch={requestSwitch} />
-            ))}
+            ) : allMyTimedEvents.map(ev => {
+              const assignment = ev.isKid ? getAssignment(ev.id) : null
+              const assignedTo = assignment?.assigned_to
+              // Kid assigned to spouse only → show in spouse col, not here
+              if (ev.isKid && assignedTo && assignedTo !== myProfileId && assignedTo !== 'both' && assignedTo !== 'none') return null
+              return (
+                <EventPill key={ev.id}
+                  event={ev}
+                  color={ev.isKid ? (ev.calendarColor ?? '#6366f1') : (ev.calendarColor ?? '#f96400')}
+                  onAssign={ev.isKid ? assignEvent : undefined}
+                  assignment={ev.isKid ? assignment : null}
+                  myProfileId={myProfileId}
+                  spouseProfile={spouseProfile}
+                  switchLoading={switchLoading === assignment?.id}
+                  onSwitch={ev.isKid ? requestSwitch : undefined}
+                />
+              )
+            })}
           </div>
-          {/* Spouse column */}
+          {/* Spouse column: deduplicated, plus kids assigned to spouse */}
           <div>
-            {allTimedSpouseEvents.length === 0 ? (
+            {deduplicatedSpouseEvents.length === 0 && assignedKidEvents.filter(e => getAssignment(e.id)?.assigned_to === spouseProfile.id).length === 0 ? (
               <p className="text-xs text-gray-300 text-center py-4">Nothing today</p>
-            ) : allTimedSpouseEvents.map((ev, i) => (
+            ) : null}
+            {deduplicatedSpouseEvents.map((ev, i) => (
               <div key={i} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 mb-1.5">
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: spouseProfile.color }} />
@@ -289,7 +315,7 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
                 <p className="text-xs text-gray-400 mt-0.5">{formatTime(ev.start)}</p>
               </div>
             ))}
-            {/* Assigned kids in spouse column */}
+            {/* Kids assigned to spouse */}
             {assignedKidEvents.filter(e => getAssignment(e.id)?.assigned_to === spouseProfile.id).map(ev => (
               <EventPill key={ev.id} event={ev} color={ev.calendarColor ?? '#6366f1'}
                 onAssign={assignEvent} assignment={getAssignment(ev.id)}
@@ -302,22 +328,13 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
       ) : (
         /* Single column when no spouse connected */
         <div className="mb-3">
-          {allTimedMyEvents.map(ev => (
-            <EventPill key={ev.id} event={ev} color={ev.calendarColor ?? '#f96400'} myProfileId={myProfileId} />
-          ))}
-        </div>
-      )}
-
-      {/* Unassigned kids events — full width */}
-      {unassignedKidEvents.length > 0 && (
-        <div className="mb-3">
-          <p className="text-[10px] font-semibold text-orange-600 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-            ⚠️ Kids activities — who's on duty?
-          </p>
-          {unassignedKidEvents.map(ev => (
-            <EventPill key={ev.id} event={ev} color={ev.calendarColor ?? '#6366f1'}
-              onAssign={assignEvent} assignment={null}
-              myProfileId={myProfileId} spouseProfile={spouseProfile} />
+          {allMyTimedEvents.map(ev => (
+            <EventPill key={ev.id} event={ev}
+              color={ev.isKid ? (ev.calendarColor ?? '#6366f1') : (ev.calendarColor ?? '#f96400')}
+              onAssign={ev.isKid ? assignEvent : undefined}
+              assignment={ev.isKid ? getAssignment(ev.id) : null}
+              myProfileId={myProfileId} spouseProfile={null}
+            />
           ))}
         </div>
       )}
