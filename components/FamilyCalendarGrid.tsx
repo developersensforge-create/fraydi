@@ -159,7 +159,7 @@ function EventBlock({
                     { val: myProfileId, label: 'I drive' },
                     ...(spouseId ? [{ val: spouseId, label: `${spouseName?.split(' ')[0]} covers` }] : []),
                     { val: 'both', label: 'Both drive' },
-                    { val: 'none', label: 'No parent needed' },
+                    { val: 'none', label: 'No driver needed' },
                     { val: null, label: 'Clear' },
                   ].map(opt => (
                     <button key={opt.val ?? 'clear'}
@@ -275,7 +275,7 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, onAssign }: {
                   { val: myProfileId, label: 'I drive' },
                   ...(spouseProfile ? [{ val: spouseProfile.id, label: `${spouseProfile.name.split(' ')[0]} covers` }] : []),
                   { val: 'both', label: 'Both drive' },
-                  { val: 'none', label: 'No parent needed' },
+                  { val: 'none', label: 'No driver needed' },
                 ].map(opt => (
                   <button key={opt.val}
                     onClick={() => { onAssign(ev.id, opt.val); setOpen(false) }}
