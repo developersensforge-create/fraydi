@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type CalEvent = {
@@ -48,14 +49,23 @@ function fmtTime(iso: string) {
 
 function toMinutesFromMidnight(iso: string): number {
   const tz = getDeviceTz()
+  // If ISO string has no timezone offset (e.g. "2026-04-12T09:00:00" from iCal),
+  // treat it as local time directly — don't pass through Intl which would assume UTC
+  const hasOffset = /[Z+\-]\d*$/.test(iso) || iso.endsWith('Z')
+  if (!hasOffset) {
+    const parts = iso.replace('T', ' ').split(/[\s:]/)
+    const h = parseInt(parts[3] ?? '0')
+    const m = parseInt(parts[4] ?? '0')
+    return h * 60 + m
+  }
   const d = new Date(iso)
-  // Get local hour/minute in device timezone
-  const parts = new Intl.DateTimeFormat('en-US', {
+  const formatted = new Intl.DateTimeFormat('en-US', {
     timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: false,
   }).formatToParts(d)
-  const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0')
-  const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
-  return h * 60 + m
+  const h = parseInt(formatted.find(p => p.type === 'hour')?.value ?? '0')
+  const m = parseInt(formatted.find(p => p.type === 'minute')?.value ?? '0')
+  // Handle midnight edge case (some browsers return 24)
+  return (h === 24 ? 0 : h) * 60 + m
 }
 
 function topPx(iso: string): number {
@@ -93,6 +103,8 @@ function EventBlock({
   stackIndex?: number; stackTotal?: number
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [dropdownPos, setDropdownPos] = useState<{top:number;right:number} | null>(null)
+  const dropBtnRef = useRef<HTMLButtonElement>(null)
   const top = topPx(startIso)
   const h = heightPx(startIso, endIso)
   const isShort = h < 40
@@ -153,51 +165,58 @@ function EventBlock({
           {isKid && onAssign && (
             <div className="relative flex-shrink-0">
               {!assignedTo ? (
-                // Unassigned — compact dropdown trigger
                 <button
-                  onClick={() => setDropdownOpen(o => !o)}
+                  ref={dropBtnRef}
+                  onClick={e => { e.stopPropagation(); const r = dropBtnRef.current?.getBoundingClientRect(); if(r) setDropdownPos({top: r.bottom+4, right: window.innerWidth-r.right}); setDropdownOpen(o => !o) }}
                   className="text-[9px] font-semibold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200 flex items-center gap-0.5"
                 >
                   Driver? ▾
                 </button>
               ) : (
                 <button
-                  onClick={() => setDropdownOpen(o => !o)}
+                  ref={dropBtnRef}
+                  onClick={e => { e.stopPropagation(); const r = dropBtnRef.current?.getBoundingClientRect(); if(r) setDropdownPos({top: r.bottom+4, right: window.innerWidth-r.right}); setDropdownOpen(o => !o) }}
                   className="text-[9px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5"
                   style={{ backgroundColor: color + '30', color }}
                 >
                   {dutyLabel} ▾
                 </button>
               )}
-              {dropdownOpen && (
-                <div className="absolute right-0 top-5 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-[120px]">
-                  {[
-                    { val: myProfileId, label: '🚗 I drive' },
-                    ...(spouseId ? [{ val: spouseId, label: `🚗 ${spouseName?.split(' ')[0]} drives` }] : []),
-                    { val: 'both', label: '🚗 Both drive' },
-                    { val: 'none', label: '📍 No driver needed' },
-                    { val: null, label: '↩ Clear' },
-                  ].map(opt => (
-                    <button key={opt.val ?? 'clear'}
-                      onClick={() => { onAssign(assignment?.id ?? '', opt.val); setDropdownOpen(false) }}
-                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${assignedTo === opt.val ? 'font-bold text-[#f96400]' : 'text-gray-700'}`}
+              {dropdownOpen && dropdownPos && typeof document !== 'undefined' && createPortal(
+                <>
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setDropdownOpen(false)} />
+                  <div className="fixed bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-[9999] min-w-[150px]"
+                    style={{ top: dropdownPos.top, right: dropdownPos.right }}
+                    onClick={e => e.stopPropagation()}>
+                    {[
+                      { val: myProfileId, label: '🚗 I drive' },
+                      ...(spouseId ? [{ val: spouseId, label: `🚗 ${spouseName?.split(' ')[0]} drives` }] : []),
+                      { val: 'both', label: '🚗 Both drive' },
+                      { val: 'none', label: '📍 No driver needed' },
+                      { val: null, label: '↩ Clear' },
+                    ].map(opt => (
+                      <button key={opt.val ?? 'clear'}
+                        onClick={() => { onAssign!(assignment?.id ?? '', opt.val); setDropdownOpen(false) }}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${assignedTo === opt.val ? 'font-bold text-[#f96400]' : 'text-gray-700'}`}
+                      >
+                        {opt.val === assignedTo && opt.val !== null ? `✓ ${opt.label}` : opt.label}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => { onAssign!(assignment?.id ?? '', 'skip'); setDropdownOpen(false) }}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 border-t border-gray-100"
                     >
-                      {opt.val === assignedTo && opt.val !== null ? `✓ ${opt.label}` : opt.label}
+                      🚫 Skip this event
                     </button>
-                  ))}
-                  <button
-                    onClick={() => { onAssign(assignment?.id ?? '', 'skip'); setDropdownOpen(false) }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 border-t border-gray-100"
-                  >
-                    🚫 Skip this event
-                  </button>
                   {assignedTo && assignedTo !== 'both' && assignedTo !== 'none' && onSwitch && assignment && (
                     <button onClick={() => { onSwitch(assignment.id); setDropdownOpen(false) }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-[#f96400] hover:bg-orange-50 border-t border-gray-100">
+                      className="w-full text-left px-3 py-2 text-xs text-[#f96400] hover:bg-orange-50 border-t border-gray-100">
                       🔄 Request switch
                     </button>
                   )}
-                </div>
+                  </div>
+                </>,
+                document.body
               )}
             </div>
           )}
@@ -261,21 +280,29 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
           if (isSkipped) return null
 
           const n = cluster.length
-          const isFocused = focusedId === (ev.id ?? ev.title)
-          const isUnfocused = focusedId !== null && !isFocused && cluster.some(c => (c.id ?? c.title) === focusedId)
+          const evKey = ev.id ?? ev.title
+          const isFocused = focusedId === evKey
+          const hasOverlap = n > 1
+          // If there's overlap and no one is focused: front layer (higher z) is semi-transparent
+          // If someone is focused: unfocused ones fade out
+          const isUnfocused = focusedId !== null && !isFocused
 
           // Sort cluster by start time so later = higher z
           const sortedCluster = [...cluster].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
           const zRank = sortedCluster.indexOf(ev) // later start = higher index = higher z
+          const isTopLayer = zRank === n - 1
 
-          // Width: split equally. Focused event gets extra width.
+          // Width: split equally
           const slotW = 100 / n
           const leftPct = slotIndex * slotW
           const rightPct = 100 - leftPct - slotW
 
+          // Opacity: top layer in an unfocused overlap = semi-transparent so you can see behind
+          const opacity = isUnfocused ? 0.35 : (hasOverlap && !focusedId && isTopLayer) ? 0.82 : 1
+
           return (
             <div
-              key={ev.id ?? ev.title}
+              key={evKey}
               style={{
                 position: 'absolute',
                 top: topPx(ev.start),
@@ -283,10 +310,10 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
                 left: `${leftPct}%`,
                 right: `${rightPct}%`,
                 zIndex: isFocused ? 50 : 10 + zRank,
-                opacity: isUnfocused ? 0.45 : 1,
-                transition: 'opacity 0.15s, z-index 0s',
+                opacity,
+                transition: 'opacity 0.15s',
               }}
-              onClick={() => setFocusedId(prev => prev === (ev.id ?? ev.title) ? null : (ev.id ?? ev.title))}
+              onClick={() => setFocusedId(prev => prev === evKey ? null : evKey)}
             >
               <EventBlock
                 title={ev.title}
@@ -402,9 +429,16 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
 
         const allEvents: CalEvent[] = (evRes.events ?? []).map((e: any) => {
           const name = (e.calendarName ?? '').toLowerCase()
+          // Kid event detection: check calendar name AND event title for known kid activity keywords
+          const titleLower = (e.title ?? '').toLowerCase()
           const isKid = name.includes('kid') || name.includes('hunter') ||
             name.includes('hayden') || name.includes('baseball') ||
-            name.includes('soccer') || name.includes('activit') || name.includes('4v4')
+            name.includes('soccer') || name.includes('activit') || name.includes('4v4') ||
+            titleLower.includes('riverbat') || titleLower.includes('12u') || titleLower.includes('6u') ||
+            titleLower.includes('hunter') || titleLower.includes('hayden') ||
+            titleLower.includes('fll') || titleLower.includes('scioly') || titleLower.includes('chess') ||
+            titleLower.includes('swim') || titleLower.includes('gym') || titleLower.includes('practice') ||
+            titleLower.includes('academy') || titleLower.includes('tournament') || titleLower.includes('game')
           return { id: e.id, title: e.title, start: e.start, end: e.end, isAllDay: e.isAllDay, calendarName: e.calendarName, calendarColor: e.calendarColor, source: e.source, isKid }
         })
 
