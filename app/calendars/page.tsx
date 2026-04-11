@@ -200,6 +200,8 @@ export default function CalendarsPage() {
   const [showGoogleColorPicker, setShowGoogleColorPicker] = useState<string | null>(null)
   // Family members for owner picker
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
+  const [memberCalendars, setMemberCalendars] = useState<Record<string, Array<{id:string;name:string;color:string;primary:boolean;visible:boolean}>>>({})
+  const [memberCalLoading, setMemberCalLoading] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -242,6 +244,31 @@ export default function CalendarsPage() {
     } catch {
       // non-critical
     }
+  }
+
+  async function fetchMemberCalendars(memberProfileId: string) {
+    setMemberCalLoading(memberProfileId)
+    try {
+      const res = await fetch(`/api/family/member-calendars?member_profile_id=${memberProfileId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setMemberCalendars(prev => ({ ...prev, [memberProfileId]: data.calendars ?? [] }))
+      }
+    } catch { /* ignore */ } finally {
+      setMemberCalLoading(null)
+    }
+  }
+
+  async function toggleMemberCalendar(memberProfileId: string, calId: string, visible: boolean) {
+    setMemberCalendars(prev => ({
+      ...prev,
+      [memberProfileId]: (prev[memberProfileId] ?? []).map(c => c.id === calId ? { ...c, visible } : c)
+    }))
+    await fetch('/api/family/member-calendars', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ member_profile_id: memberProfileId, google_calendar_id: calId, visible }),
+    })
   }
 
   async function saveGooglePref(cal: GoogleCal, patch: Partial<{ display_name: string; color: string; visible: boolean }>) {
@@ -719,6 +746,57 @@ export default function CalendarsPage() {
                     <span className="text-gray-300 italic">none assigned</span>
                   ) : (
                     <span className="text-gray-700">{group.calNames.join(', ')}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Family Member Calendars section ── */}
+        {familyMembers.filter(m => m.role !== 'me' && m.role !== 'kid').length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <p className="text-sm font-semibold text-gray-900">Family Member Calendars</p>
+              <p className="text-xs text-gray-400 mt-0.5">Choose which of their calendars to include in conflict detection</p>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {familyMembers.filter(m => m.role !== 'me' && m.role !== 'kid').map(member => (
+                <div key={member.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                        style={{ backgroundColor: member.color ?? '#6366f1' }}>
+                        {member.name.charAt(0)}
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">{member.name}</span>
+                    </div>
+                    {!memberCalendars[member.id] && (
+                      <button onClick={() => fetchMemberCalendars(member.id)}
+                        disabled={memberCalLoading === member.id}
+                        className="text-xs text-[#f96400] hover:underline disabled:opacity-50">
+                        {memberCalLoading === member.id ? 'Loading…' : 'Load calendars'}
+                      </button>
+                    )}
+                  </div>
+                  {memberCalendars[member.id] && (
+                    <div className="space-y-2 ml-8">
+                      {memberCalendars[member.id].map(cal => (
+                        <div key={cal.id} className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cal.color }} />
+                            <span className="text-xs text-gray-700 truncate">{cal.name}</span>
+                            {cal.primary && <span className="text-[10px] text-gray-400 flex-shrink-0">primary</span>}
+                          </div>
+                          <label className="flex items-center gap-1.5 flex-shrink-0 cursor-pointer">
+                            <input type="checkbox" checked={cal.visible}
+                              onChange={e => toggleMemberCalendar(member.id, cal.id, e.target.checked)}
+                              className="rounded accent-[#f96400] w-3.5 h-3.5" />
+                            <span className="text-[10px] text-gray-400">{cal.visible ? 'On' : 'Off'}</span>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               ))}

@@ -107,8 +107,21 @@ export async function GET(req: NextRequest) {
       }
 
       try {
+        // Get viewer's calendar prefs for this member (which sub-calendars to include)
+        const { data: calPrefs } = await db
+          .from('family_member_cal_prefs')
+          .select('google_calendar_id, visible')
+          .eq('viewer_profile_id', myProfile.id)
+          .eq('member_profile_id', member.id)
+        const hiddenCals = new Set(
+          (calPrefs ?? []).filter(p => !p.visible).map(p => p.google_calendar_id)
+        )
+
         const events = await getEventsForDate(accessToken, targetDate)
         for (const ev of events) {
+          // Skip events from hidden sub-calendars
+          if (ev.calendarId && hiddenCals.has(ev.calendarId)) continue
+
           const start = ev.start.dateTime ?? ev.start.date ?? ''
           const end = ev.end.dateTime ?? ev.end.date ?? ''
           allMemberEvents.push({

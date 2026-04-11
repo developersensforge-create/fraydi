@@ -177,13 +177,22 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 3. Merge & sort ─────────────────────────────────────────────────────────
-  // Deduplicate across sources: if same title + same date appears in both Google and iCal, keep Google version
-  const seenTitleDate = new Set<string>()
+  // Deduplicate across sources: suppress events with same title + overlapping time window
+  // This handles cases where Liwei's shared calendar and Ruizhi's Google calendar both have the same event
   const deduped: typeof googleEvents = []
   for (const ev of [...googleEvents, ...icalEvents]) {
-    const key = `${ev.title.toLowerCase().trim()}::${ev.start.slice(0, 10)}`
-    if (!seenTitleDate.has(key)) {
-      seenTitleDate.add(key)
+    const titleKey = ev.title.toLowerCase().trim()
+    const evStart = new Date(ev.start).getTime()
+    const evEnd = new Date(ev.end).getTime()
+    // Check if an existing event with same/similar title overlaps in time
+    const isDuplicate = deduped.some(existing => {
+      if (existing.title.toLowerCase().trim() !== titleKey) return false
+      const exStart = new Date(existing.start).getTime()
+      const exEnd = new Date(existing.end).getTime()
+      // Overlapping time windows (within 5 minutes of each other)
+      return Math.abs(exStart - evStart) < 5 * 60 * 1000
+    })
+    if (!isDuplicate) {
       deduped.push(ev)
     }
   }
