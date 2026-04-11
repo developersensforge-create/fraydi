@@ -103,13 +103,26 @@ function EventBlock({
   const leftPct = stackIndex % 2 === 0 ? 0 : Math.min(stackIndex * OFFSET, 30)
   const rightPct = stackIndex % 2 === 1 ? 0 : Math.min(stackIndex * OFFSET, 30)
 
+  const status = assignment?.status
+
   const dutyLabel = !assignedTo ? null :
     assignedTo === 'both' ? 'Both drive' :
     assignedTo === 'none' ? 'No driver needed' :
     assignedTo === myProfileId ? 'I drive' :
     `${spouseName?.split(' ')[0]} drives`
 
-  const isNoParent = assignedTo === 'none'
+  // Visual states per spec
+  const isNoDriver = assignedTo === 'none'
+  const isSpousePending = !!assignedTo && assignedTo !== myProfileId && assignedTo !== 'both' && assignedTo !== 'none' && status === 'pending'
+  const isSolid = !!assignedTo && (assignedTo === myProfileId || assignedTo === 'both' || status === 'confirmed')
+
+  const borderVal = isNoDriver
+    ? `2px dashed ${color}50`
+    : isSpousePending
+      ? `2px dashed ${color}90`
+      : isSolid
+        ? `3px solid ${color}`
+        : `2px dashed ${color}80`
 
   return (
     <div
@@ -119,11 +132,11 @@ function EventBlock({
         height: Math.max(h, 20),
         left: `${leftPct}%`,
         right: `${rightPct}%`,
-        backgroundColor: isNoParent ? 'transparent' : color + '20',
-        border: isNoParent ? `2px dashed ${color}60` : `1px solid ${color}`,
-        borderLeft: isNoParent ? `2px dashed ${color}60` : `3px solid ${color}`,
+        backgroundColor: isNoDriver ? 'transparent' : color + '20',
+        border: borderVal,
+        borderLeft: borderVal,
         zIndex: 10 + stackIndex,
-        opacity: isNoParent ? 0.6 : 1,
+        opacity: isNoDriver ? 0.5 : 1,
       }}
     >
       <div className="h-full flex flex-col p-1.5 overflow-hidden">
@@ -371,11 +384,21 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
   }, [date, myProfileId])
 
   const assignEvent = async (eventId: string, profileId: string | null) => {
+    // Optimistic update — immediate visual feedback
+    setAssignments(prev => {
+      const existing = prev.find(a => a.event_id === eventId)
+      const optimisticStatus = (!profileId || profileId === myProfileId || profileId === 'both' || profileId === 'none')
+        ? 'confirmed' : 'pending'
+      if (!profileId) return prev.filter(a => a.event_id !== eventId)
+      if (existing) return prev.map(a => a.event_id === eventId ? { ...a, assigned_to: profileId, status: optimisticStatus } : a)
+      return [...prev, { id: 'optimistic-' + eventId, event_id: eventId, assigned_to: profileId, status: optimisticStatus }]
+    })
+    // Persist to server
     await fetch('/api/coordination/assign', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event_id: eventId, assigned_to_profile_id: profileId }),
     })
-    await loadAssignments()
+    await loadAssignments() // reconcile with real server state
   }
 
   const requestSwitch = async (assignmentId: string) => {
@@ -390,15 +413,21 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
   const unassignedKids = kidEvents.filter(e => !assignments.find(a => a.event_id === e.id))
   const assignedKids = kidEvents.filter(e => !!assignments.find(a => a.event_id === e.id))
 
-  // Kid events assigned to me or both → show in my column
+  // Kid events assigned to me → my column only
+  // 'both' → both columns, 'none' → my column (faded)
   const myKidsInCol = assignedKids.filter(e => {
     const a = assignments.find(x => x.event_id === e.id)
     return a && (a.assigned_to === myProfileId || a.assigned_to === 'both' || a.assigned_to === 'none')
   })
-  // Kids assigned to spouse → show in spouse column
+  // Kids assigned to spouse → spouse column only (not my column)
   const spouseKidsInCol = spouseProfile ? assignedKids.filter(e => {
     const a = assignments.find(x => x.event_id === e.id)
     return a && (a.assigned_to === spouseProfile.id)
+  }) : []
+  // 'both' → also show in spouse column
+  const bothKidsInSpouseCol = spouseProfile ? assignedKids.filter(e => {
+    const a = assignments.find(x => x.event_id === e.id)
+    return a && a.assigned_to === 'both'
   }) : []
 
   const myColEvents = [
@@ -409,6 +438,7 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
   const spouseColEvents = [
     ...spouseEvents,
     ...spouseKidsInCol.map(e => ({ ...e })),
+    ...bothKidsInSpouseCol.map(e => ({ ...e })),
   ].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
 
   if (loading) {
