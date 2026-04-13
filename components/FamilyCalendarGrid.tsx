@@ -122,38 +122,30 @@ function EventBlock({
   if (isSkipped) return null
 
   // Left-bar hollow box style (Outlook/Google Calendar style)
-  // Hollow = white/very light bg, colored left bar, thin border
-  const barColor = color
   const bgColor = isNoDriver ? '#fafafa' : '#ffffff'
   const boxOpacity = isNoDriver ? 0.6 : 1
   const borderColor = isNoDriver ? color + '40' : color + '30'
-  const barStyle = isNoDriver
-    ? `2px dashed ${color}80`   // dashed bar for no-driver
+  const barBorder = isNoDriver
+    ? `3px dashed ${color}80`
     : isSpousePending
-      ? `3px dashed ${color}`   // dashed bar for pending
-      : `4px solid ${barColor}` // solid bar default
+      ? `3px dashed ${color}`
+      : `4px solid ${color}`
 
   return (
+    // EventBlock fills its wrapper div entirely — no absolute positioning here
     <div
-      className="absolute rounded-r-lg overflow-hidden flex"
+      className="rounded-r-lg overflow-hidden flex w-full h-full"
       style={{
-        top,
-        height: Math.max(h, 20),
-        left: 0,
-        right: 0,
         backgroundColor: bgColor,
         border: `1px solid ${borderColor}`,
         borderLeft: 'none',
-        zIndex: 10 + stackIndex,
         opacity: boxOpacity,
       }}
     >
       {/* Left color bar */}
-      <div className="flex-shrink-0 rounded-l-lg" style={{
-        width: isNoDriver ? 3 : 4,
-        background: barStyle.includes('dashed') ? 'transparent' : barColor,
-        borderLeft: barStyle,
-        marginLeft: -1,
+      <div className="flex-shrink-0" style={{
+        width: 4,
+        borderLeft: barBorder,
       }} />
       <div className="flex-1 flex flex-col p-1.5 overflow-hidden min-w-0">
         {/* Top row: time + kid indicator + duty dropdown */}
