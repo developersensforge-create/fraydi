@@ -49,22 +49,12 @@ function fmtTime(iso: string) {
 
 function toMinutesFromMidnight(iso: string): number {
   const tz = getDeviceTz()
-  // If ISO string has no timezone offset (e.g. "2026-04-12T09:00:00" from iCal),
-  // treat it as local time directly — don't pass through Intl which would assume UTC
-  const hasOffset = /[Z+\-]\d*$/.test(iso) || iso.endsWith('Z')
-  if (!hasOffset) {
-    const parts = iso.replace('T', ' ').split(/[\s:]/)
-    const h = parseInt(parts[3] ?? '0')
-    const m = parseInt(parts[4] ?? '0')
-    return h * 60 + m
-  }
   const d = new Date(iso)
-  const formatted = new Intl.DateTimeFormat('en-US', {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: false,
   }).formatToParts(d)
-  const h = parseInt(formatted.find(p => p.type === 'hour')?.value ?? '0')
-  const m = parseInt(formatted.find(p => p.type === 'minute')?.value ?? '0')
-  // Handle midnight edge case (some browsers return 24)
+  const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0')
+  const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
   return (h === 24 ? 0 : h) * 60 + m
 }
 
@@ -429,16 +419,13 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
 
         const allEvents: CalEvent[] = (evRes.events ?? []).map((e: any) => {
           const name = (e.calendarName ?? '').toLowerCase()
-          // Kid event detection: check calendar name AND event title for known kid activity keywords
+          // Kid event detection — calendar name only (safe) + very specific title keywords
           const titleLower = (e.title ?? '').toLowerCase()
           const isKid = name.includes('kid') || name.includes('hunter') ||
             name.includes('hayden') || name.includes('baseball') ||
             name.includes('soccer') || name.includes('activit') || name.includes('4v4') ||
-            titleLower.includes('riverbat') || titleLower.includes('12u') || titleLower.includes('6u') ||
-            titleLower.includes('hunter') || titleLower.includes('hayden') ||
-            titleLower.includes('fll') || titleLower.includes('scioly') || titleLower.includes('chess') ||
-            titleLower.includes('swim') || titleLower.includes('gym') || titleLower.includes('practice') ||
-            titleLower.includes('academy') || titleLower.includes('tournament') || titleLower.includes('game')
+            titleLower.includes('riverbat') || titleLower.includes(' 12u') || titleLower.includes(' 6u') ||
+            titleLower.includes('fll meeting') || titleLower.includes('scioly')
           return { id: e.id, title: e.title, start: e.start, end: e.end, isAllDay: e.isAllDay, calendarName: e.calendarName, calendarColor: e.calendarColor, source: e.source, isKid }
         })
 
