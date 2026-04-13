@@ -439,13 +439,17 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
 
         const allEvents: CalEvent[] = (evRes.events ?? []).map((e: any) => {
           const name = (e.calendarName ?? '').toLowerCase()
-          // Kid event detection — calendar name only (safe) + very specific title keywords
           const titleLower = (e.title ?? '').toLowerCase()
-          const isKid = name.includes('kid') || name.includes('hunter') ||
+          // Never classify as kid if it's a work/personal/primary calendar
+          const isWorkCal = name.includes('work') || name.includes('sensforge') ||
+            name.includes('ruizhi') || name.includes('primary') || name.includes('personal') ||
+            name === 'ruizhi.hong@gmail.com' || (e.calendarName ?? '').includes('@')
+          // Kid event detection — calendar name keywords only (no title matching to avoid false positives)
+          const isKid = !isWorkCal && (
+            name.includes('kid') || name.includes('hunter') ||
             name.includes('hayden') || name.includes('baseball') ||
-            name.includes('soccer') || name.includes('activit') || name.includes('4v4') ||
-            titleLower.includes('riverbat') || titleLower.includes(' 12u') || titleLower.includes(' 6u') ||
-            titleLower.includes('fll meeting') || titleLower.includes('scioly')
+            name.includes('soccer') || name.includes('activit') || name.includes('4v4')
+          )
           return { id: e.id, title: e.title, start: e.start, end: e.end, isAllDay: e.isAllDay, calendarName: e.calendarName, calendarColor: e.calendarColor, source: e.source, isKid }
         })
 

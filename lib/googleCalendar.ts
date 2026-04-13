@@ -53,15 +53,17 @@ export async function getEventsForCalendar(
 
 /**
  * Fetch ALL calendars' events for a date, merged and deduplicated by event ID.
+ * Pass explicit timeMin/timeMax (timezone-aware) to avoid server UTC midnight bug.
  */
 export async function getEventsForDate(
   accessToken: string,
-  date: Date
+  date: Date,
+  explicitTimeMin?: Date,
+  explicitTimeMax?: Date
 ): Promise<CalendarEvent[]> {
-  const timeMin = new Date(date)
-  timeMin.setHours(0, 0, 0, 0)
-  const timeMax = new Date(date)
-  timeMax.setHours(23, 59, 59, 999)
+  // Use explicit bounds if provided (timezone-correct); fall back to UTC midnight (legacy)
+  const timeMin = explicitTimeMin ?? (() => { const d = new Date(date); d.setHours(0,0,0,0); return d })()
+  const timeMax = explicitTimeMax ?? (() => { const d = new Date(date); d.setHours(23,59,59,999); return d })()
 
   const calendars = await listCalendars(accessToken)
   if (!calendars.length) {
