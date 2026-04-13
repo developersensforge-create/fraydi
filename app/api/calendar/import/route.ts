@@ -105,19 +105,73 @@ async function parseIcal(icalText: string): Promise<ParsedEvent[]> {
         // Use full DTSTART line (includes TZID params) for correct parsing
         const startRaw = current['_DTSTART_FULL'] || current['DTSTART'] || current['DTSTART;VALUE=DATE'] || ''
         const endRaw = current['_DTEND_FULL'] || current['DTEND'] || current['DTEND;VALUE=DATE'] || startRaw
+        const title = (current['SUMMARY'] || 'Untitled').replace(/\\,/g, ',').replace(/\\n/g, ' ').replace(/\\/g, '')
+        const description = current['DESCRIPTION'] ? current['DESCRIPTION'].replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\/g, '') : null
+        const location = current['LOCATION'] ? current['LOCATION'].replace(/\\,/g, ',').replace(/\\/g, '') : null
+        const uid = current['UID']
+        const rrule = current['RRULE'] || ''
+        const exdatesRaw = current['EXDATE'] || ''
 
-        events.push({
-          uid: current['UID'],
-          title: (current['SUMMARY'] || 'Untitled').replace(/\\,/g, ',').replace(/\\n/g, ' ').replace(/\\/g, ''),
-          start_time: startRaw ? parseDate(startRaw) : new Date().toISOString(),
-          end_time: endRaw ? parseDate(endRaw) : new Date().toISOString(),
-          description: current['DESCRIPTION']
-            ? current['DESCRIPTION'].replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\/g, '')
-            : null,
-          location: current['LOCATION']
-            ? current['LOCATION'].replace(/\\,/g, ',').replace(/\\/g, '')
-            : null,
-        })
+        const startIso = startRaw ? parseDate(startRaw) : new Date().toISOString()
+        const endIso = endRaw ? parseDate(endRaw) : new Date().toISOString()
+        const duration = new Date(endIso).getTime() - new Date(startIso).getTime()
+
+        if (rrule && rrule.includes('FREQ=WEEKLY')) {
+          // Expand weekly recurrences into individual events covering 12 months ahead
+          const rparts: Record<string,string> = {}
+          for (const part of rrule.split(';')) {
+            const [k,v] = part.split('=')
+            if (k && v) rparts[k] = v
+          }
+          const interval = parseInt(rparts['INTERVAL'] || '1')
+          const byDay = (rparts['BYDAY'] || '').split(',').filter(Boolean)
+          const dayMap: Record<string,number> = {SU:0,MO:1,TU:2,WE:3,TH:4,FR:5,SA:6}
+
+          const untilStr = rparts['UNTIL']
+          const until = untilStr
+            ? new Date(untilStr.length === 8 ? `${untilStr.slice(0,4)}-${untilStr.slice(4,6)}-${untilStr.slice(6,8)}` : untilStr)
+            : new Date(Date.now() + 365 * 24 * 3600 * 1000) // 1 year ahead max
+
+          // Parse EXDATE (cancelled occurrences)
+          const exdates = new Set(exdatesRaw.split(',').map((d:string) => {
+            const v = d.replace(/.*:/, '').trim()
+            if (!v) return ''
+            try { return new Date(parseDate(v)).toDateString() } catch { return '' }
+          }).filter(Boolean))
+
+          const targetDays = byDay.map(b => dayMap[b.replace(/^[-+\d]*/,'')]).filter(n => n !== undefined)
+          const baseStart = new Date(startIso)
+          const cutoff = new Date(Math.min(until.getTime(), Date.now() + 365*24*3600*1000))
+
+          // Walk from base start by interval weeks, emit occurrences on matching days
+          let weekStart = new Date(baseStart)
+          // Align to the week of baseStart
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay()) // go to Sunday of that week
+
+          let safetyCount = 0
+          while (weekStart <= cutoff && safetyCount++ < 5000) {
+            for (const targetDay of (targetDays.length ? targetDays : [baseStart.getDay()])) {
+              const occDate = new Date(weekStart)
+              occDate.setDate(weekStart.getDate() + targetDay)
+              if (occDate < baseStart) continue
+              if (occDate > cutoff) continue
+              if (exdates.has(occDate.toDateString())) continue
+
+              // Build occurrence ISO preserving time from baseStart
+              const y2 = occDate.getFullYear(), mo2 = String(occDate.getMonth()+1).padStart(2,'0'), d2 = String(occDate.getDate()).padStart(2,'0')
+              const timePart = startIso.slice(11) // "HH:MM:SS±offset"
+              const occStart = `${y2}-${mo2}-${d2}T${timePart}`
+              const occEnd = new Date(new Date(occStart).getTime() + duration).toISOString()
+              const occUid = `${uid}_${y2}${mo2}${d2}`
+
+              events.push({ uid: occUid, title, start_time: occStart, end_time: occEnd, description, location })
+            }
+            weekStart.setDate(weekStart.getDate() + 7 * interval)
+          }
+        } else {
+          // Non-recurring or unsupported recurrence — store as single event
+          events.push({ uid, title, start_time: startIso, end_time: endIso, description, location })
+        }
       }
     } else if (inEvent) {
       const colonIdx = line.indexOf(':')
@@ -128,8 +182,10 @@ async function parseIcal(icalText: string): Promise<ParsedEvent[]> {
         const baseKey = key.split(';')[0]
         if (['DTSTART', 'DTEND'].includes(baseKey)) {
           current[baseKey] = val
-          // Store full "KEY:val" line so parseDate can access TZID params
           current[`_${baseKey}_FULL`] = `${key}:${val}`
+        } else if (baseKey === 'EXDATE') {
+          // Accumulate multiple EXDATE lines
+          current['EXDATE'] = current['EXDATE'] ? current['EXDATE'] + ',' + val : val
         } else {
           current[baseKey] = val
         }
