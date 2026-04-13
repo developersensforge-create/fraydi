@@ -287,8 +287,9 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
           const leftPct = slotIndex * slotW
           const rightPct = 100 - leftPct - slotW
 
-          // Opacity: top layer in an unfocused overlap = semi-transparent so you can see behind
-          const opacity = isUnfocused ? 0.35 : (hasOverlap && !focusedId && isTopLayer) ? 0.82 : 1
+          // Opacity: top layer always slightly transparent (so bottom events show through)
+          // When focused: focused = full opacity, others = very faded
+          const opacity = isUnfocused ? 0.35 : isFocused ? 1 : isTopLayer ? 0.8 : 1
 
           return (
             <div
@@ -333,18 +334,26 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
   )
 }
 
-// ── Full-width kid event (unassigned) — spans both columns ──────────────────
-function KidFullWidth({ ev, myProfileId, spouseProfile, onAssign }: {
+// ── Full-width kid event — spans both columns (unassigned or 'none') ─────────
+function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign }: {
   ev: CalEvent; myProfileId: string; spouseProfile?: Profile | null
+  assignment: Assignment | null
   onAssign: (eventId: string, to: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
   const top = topPx(ev.start)
   const h = Math.max(heightPx(ev.start, ev.end), 44)
+  const isNoDriver = assignment?.assigned_to === 'none'
+  const color = (ev as any).calendarColor ?? '#f96400'
 
   return (
-    <div className="absolute left-0 right-0 rounded-xl border-2 border-orange-300 bg-orange-50 z-20 px-2 py-1.5"
-      style={{ top, height: h }}>
+    <div className="absolute left-0 right-0 rounded-xl z-20 px-2 py-1.5"
+      style={{
+        top, height: h,
+        border: isNoDriver ? `2px dashed ${color}70` : '2px solid #fdba74',
+        backgroundColor: isNoDriver ? color + '10' : '#fff7ed',
+        opacity: isNoDriver ? 0.7 : 1,
+      }}>
       <div className="flex items-start justify-between gap-1">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
@@ -356,8 +365,12 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, onAssign }: {
         {/* Compact dropdown */}
         <div className="relative flex-shrink-0">
           <button onClick={() => setOpen(o => !o)}
-            className="text-[9px] font-semibold bg-orange-100 text-orange-700 px-2 py-1 rounded-lg border border-orange-200 flex items-center gap-0.5">
-            Driver? ▾
+            className="text-[9px] font-semibold px-2 py-1 rounded-lg border flex items-center gap-0.5"
+            style={isNoDriver
+              ? { backgroundColor: color+'20', color, borderColor: color+'60' }
+              : { backgroundColor: '#fed7aa', color: '#c2410c', borderColor: '#fdba74' }
+            }>
+            {isNoDriver ? '📍 No driver ▾' : 'Driver? ▾'}
           </button>
           {open && (
             <>
@@ -368,10 +381,13 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, onAssign }: {
                   ...(spouseProfile ? [{ val: spouseProfile.id, label: `🚗 ${spouseProfile.name.split(' ')[0]} drives` }] : []),
                   { val: 'both', label: '🚗 Both drive' },
                   { val: 'none', label: '📍 No driver needed' },
+                  { val: null, label: '↩ Clear' },
                 ].map(opt => (
-                  <button key={opt.val}
+                  <button key={opt.val ?? 'clear'}
                     onClick={() => { onAssign(ev.id, opt.val); setOpen(false) }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{opt.label}</button>
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${assignment?.assigned_to === opt.val && opt.val !== null ? 'font-bold text-[#f96400]' : 'text-gray-700'}`}>
+                    {assignment?.assigned_to === opt.val && opt.val !== null ? `✓ ${opt.label}` : opt.label}
+                  </button>
                 ))}
                 <button
                   onClick={() => { onAssign(ev.id, 'skip'); setOpen(false) }}
@@ -499,41 +515,45 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
     setSwitchLoading(null)
   }
 
-  const unassignedKids = kidEvents.filter(e => {
-    const a = assignments.find(x => x.event_id === e.id)
-    return !a || (!a.assigned_to) // no assignment at all
-  }).filter(e => {
-    const a = assignments.find(x => x.event_id === e.id)
-    return !a || a.assigned_to !== 'skip' // hide skipped
-  })
-  const assignedKids = kidEvents.filter(e => !!assignments.find(a => a.event_id === e.id))
+  // ── Kid event placement state machine ────────────────────────────────────
+  // skipped  → hidden entirely
+  // none     → full-width, faded dashed (remote event, still visible)
+  // myId     → my column only (left half)
+  // spouseId → spouse column only (right half)
+  // both     → both columns
+  // unset    → full-width orange "Driver?" prompt
 
-  // Kid events assigned to me → my column only
-  // 'both' → both columns, 'none' → my column (faded)
-  const myKidsInCol = assignedKids.filter(e => {
-    const a = assignments.find(x => x.event_id === e.id)
-    return a && (a.assigned_to === myProfileId || a.assigned_to === 'both' || a.assigned_to === 'none')
+  const getAssignment = (e: CalEvent) => assignments.find(x => x.event_id === e.id)
+
+  // Skipped: hidden
+  const visibleKidEvents = kidEvents.filter(e => getAssignment(e)?.assigned_to !== 'skip')
+
+  // Full-width: unassigned OR 'none' (no driver needed — stays visible full-width)
+  const fullWidthKids = visibleKidEvents.filter(e => {
+    const a = getAssignment(e)
+    return !a || !a.assigned_to || a.assigned_to === 'none'
   })
-  // Kids assigned to spouse → spouse column only (not my column)
-  const spouseKidsInCol = spouseProfile ? assignedKids.filter(e => {
-    const a = assignments.find(x => x.event_id === e.id)
-    return a && (a.assigned_to === spouseProfile.id)
-  }) : []
-  // 'both' → also show in spouse column
-  const bothKidsInSpouseCol = spouseProfile ? assignedKids.filter(e => {
-    const a = assignments.find(x => x.event_id === e.id)
-    return a && a.assigned_to === 'both'
+
+  // My column: assigned to me or 'both'
+  const myKidsInCol = visibleKidEvents.filter(e => {
+    const a = getAssignment(e)
+    return a && (a.assigned_to === myProfileId || a.assigned_to === 'both')
+  })
+
+  // Spouse column: assigned to spouse or 'both'
+  const spouseKidsInCol = spouseProfile ? visibleKidEvents.filter(e => {
+    const a = getAssignment(e)
+    return a && (a.assigned_to === spouseProfile.id || a.assigned_to === 'both')
   }) : []
 
   const myColEvents = [
     ...myEvents.filter(e => !e.isAllDay),
-    ...myKidsInCol.map(e => ({ ...e })),
+    ...myKidsInCol,
   ].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
 
   const spouseColEvents = [
     ...spouseEvents,
-    ...spouseKidsInCol.map(e => ({ ...e })),
-    ...bothKidsInSpouseCol.map(e => ({ ...e })),
+    ...spouseKidsInCol,
   ].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
 
   if (loading) {
@@ -639,13 +659,14 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
             </div>
           )}
 
-          {/* Unassigned kids — full width overlay */}
-          {unassignedKids.map(ev => (
+          {/* Full-width kids: unassigned (Driver? prompt) or 'none' (no driver needed, faded) */}
+          {fullWidthKids.map(ev => (
             <KidFullWidth
               key={ev.id}
               ev={ev}
               myProfileId={myProfileId}
               spouseProfile={spouseProfile}
+              assignment={getAssignment(ev) ?? null}
               onAssign={assignEvent}
             />
           ))}
