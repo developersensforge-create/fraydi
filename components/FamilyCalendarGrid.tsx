@@ -82,7 +82,7 @@ function overlaps(a: {start:string;end:string}, b: {start:string;end:string}) {
 // ── Event block ──────────────────────────────────────────────────────────────
 function EventBlock({
   title, startIso, endIso, color, isKid, assignment, myProfileId, spouseName,
-  spouseId, onAssign, onSwitch, switchLoading,
+  spouseId, onAssign, onSwitch, switchLoading, eventId, reminders,
   stackIndex = 0, stackTotal = 1,
 }: {
   title: string; startIso: string; endIso: string; color: string
@@ -90,6 +90,8 @@ function EventBlock({
   myProfileId: string; spouseName?: string; spouseId?: string
   onAssign?: (id: string, to: string | null) => void
   onSwitch?: (id: string) => void; switchLoading?: boolean
+  eventId?: string
+  reminders?: Array<{id: string; label: string; done: boolean}>
   stackIndex?: number; stackTotal?: number
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -223,11 +225,23 @@ function EventBlock({
           )}
         </div>
 
-        {/* Title — takes remaining space */}
-        <p className={`font-semibold text-gray-800 leading-tight mt-0.5 flex-1 overflow-hidden ${isShort ? 'text-[10px]' : 'text-xs'}`}
-          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: isShort ? 1 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+        {/* Title */}
+        <p className={`font-semibold text-gray-800 leading-tight mt-0.5 overflow-hidden ${isShort ? 'text-[10px]' : 'text-xs'}`}
+          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: isShort ? 1 : 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
           {title}
         </p>
+        {/* Reminder tags */}
+        {reminders && reminders.length > 0 && !isShort && (
+          <div className="flex flex-wrap gap-0.5 mt-1">
+            {reminders.map(r => (
+              <span key={r.id}
+                className="text-[9px] px-1 py-0.5 rounded font-medium flex items-center gap-0.5"
+                style={{ backgroundColor: color + '25', color }}>
+                {r.done ? '✓' : '📦'} {r.label}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -242,7 +256,7 @@ function EventBlock({
 // - Tap any event to bring it to full focus
 const LEFT_OFFSET = 14 // px per overlap level
 
-function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assignments, onAssign, onSwitch, switchLoading }: {
+function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assignments, onAssign, onSwitch, switchLoading, remindersMap }: {
   events: Array<{id?:string; title: string; start: string; end: string; isAllDay?: boolean; calendarColor?: string; isKid?: boolean}>
   color: string; isSpouse?: boolean; myProfileId: string
   spouseProfile?: Profile | null
@@ -250,6 +264,7 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
   onAssign: (eventId: string, to: string | null) => void
   onSwitch: (assignmentId: string) => void
   switchLoading: string | null
+  remindersMap?: Record<string, Array<{id:string;label:string;done:boolean}>>
 }) {
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const timedEvents = events.filter(e => !e.isAllDay)
@@ -323,6 +338,8 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
                 onAssign={ev.id ? (_, to) => onAssign(ev.id!, to) : undefined}
                 onSwitch={onSwitch}
                 switchLoading={switchLoading === assignment?.id}
+                eventId={ev.id}
+                reminders={ev.id ? remindersMap?.[ev.id] : undefined}
                 stackIndex={0}
                 stackTotal={1}
               />
@@ -421,6 +438,7 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
   const [spouseEvents, setSpouseEvents] = useState<MemberEvent[]>([])
   const [kidEvents, setKidEvents] = useState<CalEvent[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [remindersMap, setRemindersMap] = useState<Record<string, Array<{id:string;label:string;done:boolean}>>>({})
   const [spouseProfile, setSpouseProfile] = useState<Profile | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [switchLoading, setSwitchLoading] = useState<string | null>(null)
@@ -467,11 +485,28 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
           return !myKeys.has(`${(me.title ?? '').toLowerCase().trim()}::${me.start.slice(0,16)}`)
         })
 
-        setMyEvents(allEvents.filter(e => !e.isKid))
-        setKidEvents(allEvents.filter(e => e.isKid))
+        const myEvs = allEvents.filter(e => !e.isKid)
+        const kidEvs = allEvents.filter(e => e.isKid)
+        setMyEvents(myEvs)
+        setKidEvents(kidEvs)
         setSpouseEvents(memberEvts)
         setAssignments(assignRes.assignments ?? [])
         setNotifications(notifRes.notifications ?? [])
+
+        // Load event reminders for all visible events
+        const allIds = [...myEvs, ...kidEvs].map(e => e.id).filter(Boolean)
+        if (allIds.length > 0) {
+          fetch(`/api/event-reminders?event_ids=${allIds.join(',')}`)
+            .then(r => r.json())
+            .then(d => {
+              const map: Record<string, Array<{id:string;label:string;done:boolean}>> = {}
+              for (const r of (d.reminders ?? [])) {
+                if (!map[r.event_id]) map[r.event_id] = []
+                map[r.event_id].push({ id: r.id, label: r.label, done: r.done })
+              }
+              setRemindersMap(map)
+            }).catch(() => {})
+        }
 
         // Always set spouse profile — prefer from events (has profile ID), fallback to family members
         // Do NOT let dedup prevent the spouse column from showing
@@ -654,6 +689,7 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
               onAssign={assignEvent}
               onSwitch={requestSwitch}
               switchLoading={switchLoading}
+              remindersMap={remindersMap}
             />
           </div>
 
@@ -670,6 +706,7 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
                 onAssign={assignEvent}
                 onSwitch={requestSwitch}
                 switchLoading={switchLoading}
+                remindersMap={remindersMap}
               />
             </div>
           )}
