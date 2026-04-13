@@ -121,30 +121,41 @@ function EventBlock({
   // Skip hides the event entirely
   if (isSkipped) return null
 
-  const borderVal = isNoDriver
-    ? `2px dashed ${color}60`
+  // Left-bar hollow box style (Outlook/Google Calendar style)
+  // Hollow = white/very light bg, colored left bar, thin border
+  const barColor = color
+  const bgColor = isNoDriver ? '#fafafa' : '#ffffff'
+  const boxOpacity = isNoDriver ? 0.6 : 1
+  const borderColor = isNoDriver ? color + '40' : color + '30'
+  const barStyle = isNoDriver
+    ? `2px dashed ${color}80`   // dashed bar for no-driver
     : isSpousePending
-      ? `2px dashed ${color}90`
-      : isSolid
-        ? `3px solid ${color}`
-        : `2px dashed ${color}80`
+      ? `3px dashed ${color}`   // dashed bar for pending
+      : `4px solid ${barColor}` // solid bar default
 
   return (
     <div
-      className="absolute rounded-lg overflow-hidden"
+      className="absolute rounded-r-lg overflow-hidden flex"
       style={{
         top,
         height: Math.max(h, 20),
-        left: `${leftPct}%`,
-        right: `${rightPct}%`,
-        backgroundColor: isNoDriver ? color + '08' : color + '20',
-        border: borderVal,
-        borderLeft: borderVal,
+        left: 0,
+        right: 0,
+        backgroundColor: bgColor,
+        border: `1px solid ${borderColor}`,
+        borderLeft: 'none',
         zIndex: 10 + stackIndex,
-        opacity: isNoDriver ? 0.75 : 1,
+        opacity: boxOpacity,
       }}
     >
-      <div className="h-full flex flex-col p-1.5 overflow-hidden">
+      {/* Left color bar */}
+      <div className="flex-shrink-0 rounded-l-lg" style={{
+        width: isNoDriver ? 3 : 4,
+        background: barStyle.includes('dashed') ? 'transparent' : barColor,
+        borderLeft: barStyle,
+        marginLeft: -1,
+      }} />
+      <div className="flex-1 flex flex-col p-1.5 overflow-hidden min-w-0">
         {/* Top row: time + kid indicator + duty dropdown */}
         <div className="flex items-center justify-between gap-1 flex-shrink-0">
           <div className="flex items-center gap-1 min-w-0">
@@ -213,26 +224,24 @@ function EventBlock({
         </div>
 
         {/* Title — takes remaining space */}
-        <p className={`font-semibold text-gray-900 leading-tight mt-0.5 flex-1 overflow-hidden ${isShort ? 'text-[10px]' : 'text-xs'}`}
+        <p className={`font-semibold text-gray-800 leading-tight mt-0.5 flex-1 overflow-hidden ${isShort ? 'text-[10px]' : 'text-xs'}`}
           style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: isShort ? 1 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
           {title}
         </p>
       </div>
-
-      {/* Click outside to close dropdown */}
-      {dropdownOpen && (
-        <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
-      )}
     </div>
   )
 }
 
 // ── Column ───────────────────────────────────────────────────────────────────
-// Overlap strategy (Google Calendar-style):
-// - Find overlap groups, split width equally among events in group
-// - Later start time → higher z-index (goes on top)
-// - Focused event gets full width bump; tap any event to focus it
-// - Non-focused overlapping events are semi-transparent
+// Overlap strategy: left-edge offset (Outlook/Teams style)
+// - All events share the same right edge
+// - Each overlap level shifts the left edge right by LEFT_OFFSET px
+// - Color bar of every event remains visible (peeking out from under the front event)
+// - Later start time → higher z-index (front layer)
+// - Tap any event to bring it to full focus
+const LEFT_OFFSET = 14 // px per overlap level
+
 function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assignments, onAssign, onSwitch, switchLoading }: {
   events: Array<{id?:string; title: string; start: string; end: string; isAllDay?: boolean; calendarColor?: string; isKid?: boolean}>
   color: string; isSpouse?: boolean; myProfileId: string
@@ -272,24 +281,19 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
           const n = cluster.length
           const evKey = ev.id ?? ev.title
           const isFocused = focusedId === evKey
-          const hasOverlap = n > 1
-          // If there's overlap and no one is focused: front layer (higher z) is semi-transparent
-          // If someone is focused: unfocused ones fade out
           const isUnfocused = focusedId !== null && !isFocused
 
-          // Sort cluster by start time so later = higher z
+          // Sort cluster by start time: earlier start = further back (lower z)
           const sortedCluster = [...cluster].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
-          const zRank = sortedCluster.indexOf(ev) // later start = higher index = higher z
-          const isTopLayer = zRank === n - 1
+          const zRank = sortedCluster.indexOf(ev) // later start = higher z = front
 
-          // Width: split equally
-          const slotW = 100 / n
-          const leftPct = slotIndex * slotW
-          const rightPct = 100 - leftPct - slotW
+          // Left-offset stacking: each level shifts left edge right by LEFT_OFFSET px
+          // All events share the same right edge → color bars of back events peek out
+          const leftPx = zRank * LEFT_OFFSET
 
-          // Opacity: top layer always slightly transparent (so bottom events show through)
-          // When focused: focused = full opacity, others = very faded
-          const opacity = isUnfocused ? 0.35 : isFocused ? 1 : isTopLayer ? 0.8 : 1
+          // Opacity: front (highest zRank) slightly transparent so back events visible
+          // Tap to focus: focused = full, others = very faded
+          const opacity = isUnfocused ? 0.3 : isFocused ? 1 : n > 1 && zRank === n - 1 ? 0.85 : 1
 
           return (
             <div
@@ -298,8 +302,8 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
                 position: 'absolute',
                 top: topPx(ev.start),
                 height: Math.max(heightPx(ev.start, ev.end), 20),
-                left: `${leftPct}%`,
-                right: `${rightPct}%`,
+                left: leftPx,
+                right: 0,
                 zIndex: isFocused ? 50 : 10 + zRank,
                 opacity,
                 transition: 'opacity 0.15s',
