@@ -351,20 +351,27 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign }: 
   const color = (ev as any).calendarColor ?? '#f96400'
 
   return (
-    <div className="absolute left-0 right-0 rounded-xl z-20 px-2 py-1.5"
+    // Hollow box + left color bar — same style as EventBlock
+    <div className="absolute left-0 right-0 z-20 flex rounded-r-lg overflow-hidden"
       style={{
         top, height: h,
-        border: isNoDriver ? `2px dashed ${color}70` : '2px solid #fdba74',
-        backgroundColor: isNoDriver ? color + '10' : '#fff7ed',
+        backgroundColor: '#ffffff',
+        border: `1px solid ${color}30`,
+        borderLeft: 'none',
         opacity: isNoDriver ? 0.7 : 1,
       }}>
-      <div className="flex items-start justify-between gap-1">
+      {/* Left color bar */}
+      <div className="flex-shrink-0" style={{
+        width: 4,
+        borderLeft: isNoDriver ? `3px dashed ${color}80` : `4px solid ${color}`,
+      }} />
+      <div className="flex-1 flex items-start justify-between gap-1 p-1.5 min-w-0">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
-            <span className="text-xs">🧒</span>
-            <span className="text-[10px] text-[#f96400] font-medium">{fmtTime(ev.start)}</span>
+            <span className="text-[10px]">🧒</span>
+            <span className="text-[10px] font-medium" style={{ color }}>{fmtTime(ev.start)}</span>
           </div>
-          <p className="text-xs font-bold text-gray-900 leading-tight mt-0.5">{ev.title}</p>
+          <p className="text-xs font-semibold text-gray-800 leading-tight mt-0.5 truncate">{ev.title}</p>
         </div>
         {/* Compact dropdown */}
         <div className="relative flex-shrink-0">
