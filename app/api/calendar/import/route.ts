@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabase } from '@/lib/supabaseServer'
 
 // POST /api/calendar/import
 // Body: { ical_url: string, profile_id: string, family_id: string, calendar_name: string, color: string }
@@ -50,28 +50,61 @@ async function parseIcal(icalText: string): Promise<ParsedEvent[]> {
     } else if (line === 'END:VEVENT') {
       inEvent = false
       if (current['UID']) {
-        const parseDate = (val: string): string => {
-          // DATE-TIME: 20240101T120000Z or 20240101T120000 or DATE: 20240101
-          const v = val.replace(/.*:/, '') // strip params like TZID=...
+        const parseDate = (fullLine: string): string => {
+          // fullLine may be "DTSTART;TZID=Eastern Standard Time:20260415T133000"
+          // or just the value "20260415T133000Z"
+          const colonIdx = fullLine.indexOf(':')
+          const params = colonIdx > -1 ? fullLine.slice(0, colonIdx).toUpperCase() : ''
+          const v = colonIdx > -1 ? fullLine.slice(colonIdx + 1).trim() : fullLine.trim()
+
           if (v.length === 8) {
-            // all-day date
-            return new Date(
-              `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}T00:00:00Z`
-            ).toISOString()
+            // All-day: YYYYMMDD — store as midnight Eastern
+            return `${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}T00:00:00-05:00`
           }
-          // with time
           const y = v.slice(0, 4)
           const mo = v.slice(4, 6)
           const d = v.slice(6, 8)
           const h = v.slice(9, 11)
           const mi = v.slice(11, 13)
-          const s = v.slice(13, 15)
-          const utc = v.endsWith('Z') ? 'Z' : 'Z'
-          return new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}${utc}`).toISOString()
+          const s = v.slice(13, 15) || '00'
+
+          if (v.endsWith('Z')) {
+            // Explicit UTC marker — store as-is
+            return `${y}-${mo}-${d}T${h}:${mi}:${s}Z`
+          }
+
+          // TZID present — use the offset. Eastern Standard = -05:00, Eastern Daylight = -04:00
+          // Determine DST: rough rule — EDT (Mar 2nd Sun to Nov 1st Sun)
+          const tzid = params.includes('TZID=') ? params.split('TZID=')[1] : ''
+          if (tzid.includes('EASTERN') || tzid.includes('AMERICA/NEW_YORK') || tzid.includes('EST') || tzid.includes('EDT')) {
+            const date = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}`)
+            const month = parseInt(mo)
+            const isDST = month > 3 && month < 11 // rough EDT: Apr–Oct
+            const offset = isDST ? '-04:00' : '-05:00'
+            return `${y}-${mo}-${d}T${h}:${mi}:${s}${offset}`
+          }
+          if (tzid.includes('PACIFIC') || tzid.includes('PST') || tzid.includes('PDT')) {
+            const month = parseInt(mo)
+            const isDST = month > 3 && month < 11
+            const offset = isDST ? '-07:00' : '-08:00'
+            return `${y}-${mo}-${d}T${h}:${mi}:${s}${offset}`
+          }
+          if (tzid.includes('CENTRAL') || tzid.includes('CST') || tzid.includes('CDT')) {
+            const month = parseInt(mo)
+            const isDST = month > 3 && month < 11
+            const offset = isDST ? '-05:00' : '-06:00'
+            return `${y}-${mo}-${d}T${h}:${mi}:${s}${offset}`
+          }
+          // No timezone info — assume US Eastern (default per product rules)
+          const month = parseInt(mo)
+          const isDST = month > 3 && month < 11
+          const offset = isDST ? '-04:00' : '-05:00'
+          return `${y}-${mo}-${d}T${h}:${mi}:${s}${offset}`
         }
 
-        const startRaw = current['DTSTART'] || current['DTSTART;VALUE=DATE'] || ''
-        const endRaw = current['DTEND'] || current['DTEND;VALUE=DATE'] || startRaw
+        // Use full DTSTART line (includes TZID params) for correct parsing
+        const startRaw = current['_DTSTART_FULL'] || current['DTSTART'] || current['DTSTART;VALUE=DATE'] || ''
+        const endRaw = current['_DTEND_FULL'] || current['DTEND'] || current['DTEND;VALUE=DATE'] || startRaw
 
         events.push({
           uid: current['UID'],
@@ -94,9 +127,9 @@ async function parseIcal(icalText: string): Promise<ParsedEvent[]> {
         // Store base key (ignore params for most fields, keep full key for date fields)
         const baseKey = key.split(';')[0]
         if (['DTSTART', 'DTEND'].includes(baseKey)) {
-          // keep params for date parsing context
-          current[key] = val
           current[baseKey] = val
+          // Store full "KEY:val" line so parseDate can access TZID params
+          current[`_${baseKey}_FULL`] = `${key}:${val}`
         } else {
           current[baseKey] = val
         }
@@ -166,9 +199,19 @@ export async function POST(request: NextRequest) {
       assignment_confirmed: false,
     }))
 
-    const { error: upsertError } = await (supabase as any)
+    const db = createServerSupabase()
+
+    // Find or create the calendar_source record first to get its ID
+    const { data: existingSource } = await db.from('calendar_sources')
+      .select('id').eq('ical_url', ical_url).single()
+
+    const sourceId = existingSource?.id ?? null
+
+    const rowsWithSource = rows.map(r => ({ ...r, calendar_source_id: sourceId }))
+
+    const { error: upsertError } = await db
       .from('calendar_events')
-      .upsert(rows, { onConflict: 'google_event_id' })
+      .upsert(rowsWithSource, { onConflict: 'google_event_id' })
 
     if (upsertError) {
       console.error('[calendar/import] Supabase upsert error:', upsertError)
@@ -176,7 +219,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upsert the calendar_source record
-    const { error: sourceError } = await (supabase as any).from('calendar_sources').upsert(
+    const { error: sourceError } = await db.from('calendar_sources').upsert(
       {
         profile_id,
         family_id,

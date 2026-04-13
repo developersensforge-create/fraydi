@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabase } from '@/lib/supabaseServer'
 
 // POST /api/calendar/sync
 // Body: { family_id: string }
@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch all calendar sources for this family
-    const { data: sourcesRaw, error: sourcesError } = await (supabase as any)
+    const db = createServerSupabase()
+    const { data: sourcesRaw, error: sourcesError } = await (db as any)
       .from('calendar_sources')
       .select('*')
       .eq('family_id', family_id)
