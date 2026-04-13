@@ -207,7 +207,10 @@ export async function POST(request: NextRequest) {
 
     const sourceId = existingSource?.id ?? null
 
-    const rowsWithSource = rows.map(r => ({ ...r, calendar_source_id: sourceId }))
+    // Deduplicate by google_event_id (UID) — keep last occurrence (most recent data)
+    const deduped = new Map<string, typeof rows[0]>()
+    for (const r of rows) { deduped.set(r.google_event_id, r) }
+    const rowsWithSource = Array.from(deduped.values()).map(r => ({ ...r, calendar_source_id: sourceId }))
 
     const { error: upsertError } = await db
       .from('calendar_events')
