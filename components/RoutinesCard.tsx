@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 
 type RepeatType = 'daily' | 'weekly'
@@ -27,7 +27,7 @@ type AISuggestion = {
   reason?: string
 }
 
-const MOCK_ROUTINES: Routine[] = []  // Start empty to show "setup" state
+// No mock data — load from DB
 
 const PEOPLE = ['Dad', 'Mom', 'Kids', 'Everyone']
 const COLORS: Record<string, string> = {
@@ -311,9 +311,18 @@ function AIRoutinePlanner({ onClose, onAddAll }: { onClose: () => void; onAddAll
 
 // ── Main Card ─────────────────────────────────────────────────────────────────
 export default function RoutinesCard() {
-  const [routines, setRoutines] = useState<Routine[]>(MOCK_ROUTINES)
+  const [routines, setRoutines] = useState<Routine[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [showAI, setShowAI] = useState(false)
+
+  // Load from DB on mount
+  useEffect(() => {
+    fetch('/api/routines')
+      .then(r => r.json())
+      .then(data => { setRoutines(data.routines ?? []); setLoaded(true) })
+      .catch(() => setLoaded(true))
+  }, [])
 
   const todayDow = new Date().getDay()
 
@@ -330,13 +339,40 @@ export default function RoutinesCard() {
   }, 0)
 
   const doneCount = todaysRoutines.filter(r => r.done).length
-  const hasAnyRoutines = routines.length > 0
+  const hasAnyRoutines = loaded && routines.length > 0
+  const isLoading = !loaded
 
-  const toggleDone = (id: string) =>
-    setRoutines(prev => prev.map(r => r.id === id ? { ...r, done: !r.done } : r))
+  const toggleDone = async (id: string) => {
+    const routine = routines.find(r => r.id === id)
+    if (!routine) return
+    const newDone = !routine.done
+    // Optimistic update
+    setRoutines(prev => prev.map(r => r.id === id ? { ...r, done: newDone } : r))
+    await fetch(`/api/routines/${id}/done`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ done: newDone }),
+    }).catch(() => {
+      // Revert on failure
+      setRoutines(prev => prev.map(r => r.id === id ? { ...r, done: !newDone } : r))
+    })
+  }
 
-  const addRoutine = (r: Routine) => setRoutines(prev => [...prev, r])
-  const addAll = (rs: Routine[]) => setRoutines(prev => [...prev, ...rs])
+  const addRoutine = async (r: Routine) => {
+    const res = await fetch('/api/routines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(r),
+    })
+    const data = await res.json()
+    if (data.routine) {
+      setRoutines(prev => [...prev, { ...r, id: data.routine.id }])
+    }
+  }
+
+  const addAll = async (rs: Routine[]) => {
+    for (const r of rs) await addRoutine(r)
+  }
 
   // Next upcoming routine (not done, with time)
   const nextUp = todaysRoutines.find(r => !r.done)
@@ -373,8 +409,13 @@ export default function RoutinesCard() {
         </CardHeader>
 
         <CardBody>
+          {/* Loading */}
+          {isLoading && (
+            <div className="text-center py-6 text-gray-300 text-xs">Loading…</div>
+          )}
+
           {/* Empty state: no routines set up at all */}
-          {!hasAnyRoutines && (
+          {!isLoading && !hasAnyRoutines && (
             <div className="text-center py-6 space-y-3">
               <p className="text-2xl">📋</p>
               <p className="text-sm font-medium text-gray-700">Set up your routines</p>
@@ -393,7 +434,7 @@ export default function RoutinesCard() {
           )}
 
           {/* Has routines but nothing today */}
-          {hasAnyRoutines && todaysRoutines.length === 0 && (
+          {!isLoading && hasAnyRoutines && todaysRoutines.length === 0 && (
             <div className="text-center py-4 space-y-1">
               <p className="text-sm text-gray-400">Nothing today</p>
               {nextUp === undefined && routines.find(r => r.repeat === 'weekly') && (
