@@ -141,6 +141,7 @@ function AddRoutineModal({ onClose, onAdd }: { onClose: () => void; onAdd: (r: R
 function AIRoutinePlanner({ onClose, onAddAll }: { onClose: () => void; onAddAll: (routines: Routine[]) => void }) {
   const [phase, setPhase] = useState<'input' | 'loading' | 'review'>('input')
   const [prompt, setPrompt] = useState('')
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([])
   const [reviewIndex, setReviewIndex] = useState(0)
   const [accepted, setAccepted] = useState<Routine[]>([])
@@ -148,6 +149,8 @@ function AIRoutinePlanner({ onClose, onAddAll }: { onClose: () => void; onAddAll
   const [error, setError] = useState('')
 
   const appendTag = (tag: string) => {
+    if (selectedTags.has(tag)) return // prevent duplicates
+    setSelectedTags(prev => new Set([...prev, tag]))
     setPrompt(prev => prev ? `${prev}, ${tag}` : tag)
   }
 
@@ -241,12 +244,19 @@ function AIRoutinePlanner({ onClose, onAddAll }: { onClose: () => void; onAddAll
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-2">Or tap a common scenario:</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {POPULAR_TAGS.map(tag => (
-                    <button key={tag} onClick={() => appendTag(tag)}
-                      className="text-[11px] px-2.5 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-600 hover:border-[#f96400] hover:text-[#f96400] transition-colors">
-                      {tag}
-                    </button>
-                  ))}
+                  {POPULAR_TAGS.map(tag => {
+                    const active = selectedTags.has(tag)
+                    return (
+                      <button key={tag} onClick={() => appendTag(tag)}
+                        className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                          active
+                            ? 'bg-[#f96400] text-white border-[#f96400] cursor-default'
+                            : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-[#f96400] hover:text-[#f96400]'
+                        }`}>
+                        {active ? `✓ ${tag}` : tag}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               {error && <p className="text-xs text-red-500">{error}</p>}
