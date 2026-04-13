@@ -117,7 +117,7 @@ async function parseIcal(icalText: string): Promise<ParsedEvent[]> {
         const duration = new Date(endIso).getTime() - new Date(startIso).getTime()
 
         if (rrule && rrule.includes('FREQ=WEEKLY')) {
-          // Expand weekly recurrences into individual events covering 12 months ahead
+          // Expand weekly recurrences into individual events
           const rparts: Record<string,string> = {}
           for (const part of rrule.split(';')) {
             const [k,v] = part.split('=')
@@ -125,48 +125,78 @@ async function parseIcal(icalText: string): Promise<ParsedEvent[]> {
           }
           const interval = parseInt(rparts['INTERVAL'] || '1')
           const byDay = (rparts['BYDAY'] || '').split(',').filter(Boolean)
+          // iCal day names → JS getDay() values (0=Sun,1=Mon,...,6=Sat)
           const dayMap: Record<string,number> = {SU:0,MO:1,TU:2,WE:3,TH:4,FR:5,SA:6}
 
           const untilStr = rparts['UNTIL']
-          const until = untilStr
-            ? new Date(untilStr.length === 8 ? `${untilStr.slice(0,4)}-${untilStr.slice(4,6)}-${untilStr.slice(6,8)}` : untilStr)
-            : new Date(Date.now() + 365 * 24 * 3600 * 1000) // 1 year ahead max
+          const untilMs = untilStr
+            ? new Date(untilStr.length === 8
+                ? `${untilStr.slice(0,4)}-${untilStr.slice(4,6)}-${untilStr.slice(6,8)}`
+                : untilStr.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, '$1-$2-$3T$4:$5:$6Z')
+              ).getTime()
+            : Date.now() + 365 * 24 * 3600 * 1000
 
-          // Parse EXDATE (cancelled occurrences)
-          const exdates = new Set(exdatesRaw.split(',').map((d:string) => {
-            const v = d.replace(/.*:/, '').trim()
-            if (!v) return ''
-            try { return new Date(parseDate(v)).toDateString() } catch { return '' }
-          }).filter(Boolean))
+          const cutoffMs = Math.min(untilMs, Date.now() + 365 * 24 * 3600 * 1000)
+
+          // Parse EXDATE — store as "YYYY-MM-DD" strings for easy comparison
+          const exdates = new Set<string>()
+          for (const raw of exdatesRaw.split(',')) {
+            const v = raw.replace(/.*:/, '').trim()
+            if (v.length >= 8) exdates.add(`${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}`)
+          }
+
+          // Extract local date/time from startIso (ignore timezone for date arithmetic)
+          // startIso looks like "2025-04-14T10:00:00-04:00"
+          const [datePart, timeFull] = startIso.split('T')
+          const [startY, startM, startD] = datePart.split('-').map(Number)
+          const timeAndOffset = timeFull || '00:00:00-04:00'
+          // Keep the offset from the original startIso
+          const offsetMatch = timeAndOffset.match(/([-+]\d{2}:\d{2}|Z)$/)
+          const tzOffset = offsetMatch ? offsetMatch[1] : '-04:00'
+          const timeOnly = timeAndOffset.replace(/([-+]\d{2}:\d{2}|Z)$/, '').slice(0, 8) // "HH:MM:SS"
 
           const targetDays = byDay.map(b => dayMap[b.replace(/^[-+\d]*/,'')]).filter(n => n !== undefined)
-          const baseStart = new Date(startIso)
-          const cutoff = new Date(Math.min(until.getTime(), Date.now() + 365*24*3600*1000))
 
-          // Walk from base start by interval weeks, emit occurrences on matching days
-          let weekStart = new Date(baseStart)
-          // Align to the week of baseStart
-          weekStart.setDate(weekStart.getDate() - weekStart.getDay()) // go to Sunday of that week
+          // Start from base date, walk by interval weeks
+          // Use simple date math: days since epoch to avoid DST issues
+          const msPerDay = 86400000
+          const baseDate = new Date(startY, startM - 1, startD)
+          const baseDayOfWeek = baseDate.getDay() // 0=Sun
 
+          // Determine which weekdays to emit (default: same as base)
+          const emitDays = targetDays.length ? targetDays : [baseDayOfWeek]
+
+          // Walk from baseDate, week by week
+          let cur = new Date(baseDate)
           let safetyCount = 0
-          while (weekStart <= cutoff && safetyCount++ < 5000) {
-            for (const targetDay of (targetDays.length ? targetDays : [baseStart.getDay()])) {
-              const occDate = new Date(weekStart)
-              occDate.setDate(weekStart.getDate() + targetDay)
-              if (occDate < baseStart) continue
-              if (occDate > cutoff) continue
-              if (exdates.has(occDate.toDateString())) continue
+          const nowMs = Date.now()
 
-              // Build occurrence ISO preserving time from baseStart
-              const y2 = occDate.getFullYear(), mo2 = String(occDate.getMonth()+1).padStart(2,'0'), d2 = String(occDate.getDate()).padStart(2,'0')
-              const timePart = startIso.slice(11) // "HH:MM:SS±offset"
-              const occStart = `${y2}-${mo2}-${d2}T${timePart}`
-              const occEnd = new Date(new Date(occStart).getTime() + duration).toISOString()
+          while (cur.getTime() <= cutoffMs && safetyCount++ < 2000) {
+            for (const targetDay of emitDays) {
+              // Offset from current week's Sunday to target day
+              const weekSunday = new Date(cur)
+              weekSunday.setDate(cur.getDate() - cur.getDay())
+              const occDate = new Date(weekSunday)
+              occDate.setDate(weekSunday.getDate() + targetDay)
+
+              if (occDate < baseDate) continue
+              if (occDate.getTime() > cutoffMs) continue
+
+              const y2 = occDate.getFullYear()
+              const mo2 = String(occDate.getMonth() + 1).padStart(2, '0')
+              const d2 = String(occDate.getDate()).padStart(2, '0')
+              const dateStr = `${y2}-${mo2}-${d2}`
+              if (exdates.has(dateStr)) continue
+
+              const occStart = `${dateStr}T${timeOnly}${tzOffset}`
+              const occEndDate = new Date(new Date(occStart).getTime() + duration)
+              const occEnd = occEndDate.toISOString().replace('Z', tzOffset === 'Z' ? 'Z' : '').slice(0, 19) + tzOffset
               const occUid = `${uid}_${y2}${mo2}${d2}`
 
               events.push({ uid: occUid, title, start_time: occStart, end_time: occEnd, description, location })
             }
-            weekStart.setDate(weekStart.getDate() + 7 * interval)
+            // Advance by interval weeks
+            cur.setDate(cur.getDate() + 7 * interval)
           }
         } else {
           // Non-recurring or unsupported recurrence — store as single event
