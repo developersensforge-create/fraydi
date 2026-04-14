@@ -311,13 +311,13 @@ function EventBlock({
           )}
         </div>
 
-        {/* Title — size and clamp based on available height */}
-        <p className={`font-semibold text-gray-800 leading-tight mt-0.5 overflow-hidden ${h < 70 ? 'text-[10px]' : 'text-xs'}`}
-          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: h < 55 ? 1 : h < 90 ? 2 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+        {/* Title — flex-1 so it fills all remaining space; clamp prevents overflow */}
+        <p className={`font-semibold text-gray-800 leading-tight flex-1 min-h-0 overflow-hidden ${h < 80 ? 'text-[10px]' : 'text-xs'}`}
+          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: h < 55 ? 1 : h < 100 ? 2 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
           {title}
         </p>
-        {/* Reminder tags + add button — only on tall events, never steals title space */}
-        {!isShort && eventId && (
+        {/* Reminder tags — only on tall events (>120px) so they never eat title space */}
+        {h > 120 && !isShort && eventId && (
           <ReminderTags eventId={eventId} color={color} reminders={reminders ?? []} />
         )}
         </>

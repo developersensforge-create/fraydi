@@ -196,7 +196,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
                 ) : (
-                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.7.7</div>
+                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.7.8</div>
                   <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} /></>
                 )}
               </div>
