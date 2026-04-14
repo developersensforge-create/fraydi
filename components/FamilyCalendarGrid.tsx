@@ -79,6 +79,83 @@ function overlaps(a: {start:string;end:string}, b: {start:string;end:string}) {
   return new Date(a.start) < new Date(b.end) && new Date(b.start) < new Date(a.end)
 }
 
+// ── Reminder tags (inline add on event) ──────────────────────────────────────
+function ReminderTags({ eventId, color, reminders: initialReminders }: {
+  eventId: string; color: string
+  reminders: Array<{id: string; label: string; done: boolean}>
+}) {
+  const [reminders, setReminders] = useState(initialReminders)
+  const [adding, setAdding] = useState(false)
+  const [input, setInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { setReminders(initialReminders) }, [initialReminders])
+  useEffect(() => { if (adding) inputRef.current?.focus() }, [adding])
+
+  const addReminder = async () => {
+    if (!input.trim()) { setAdding(false); return }
+    const label = input.trim()
+    setInput('')
+    setAdding(false)
+    // Optimistic
+    const tempId = 'temp-' + Date.now()
+    setReminders(prev => [...prev, { id: tempId, label, done: false }])
+    const res = await fetch('/api/event-reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_id: eventId, label }),
+    }).then(r => r.json()).catch(() => null)
+    if (res?.reminder) {
+      setReminders(prev => prev.map(r => r.id === tempId ? { ...r, id: res.reminder.id } : r))
+    }
+  }
+
+  const toggleDone = async (id: string, done: boolean) => {
+    setReminders(prev => prev.map(r => r.id === id ? { ...r, done } : r))
+    await fetch('/api/event-reminders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, done }),
+    })
+  }
+
+  return (
+    <div className="mt-1" onClick={e => e.stopPropagation()}>
+      {reminders.length > 0 && (
+        <div className="flex flex-wrap gap-0.5 mb-0.5">
+          {reminders.map(r => (
+            <button key={r.id}
+              onClick={() => toggleDone(r.id, !r.done)}
+              className="text-[9px] px-1 py-0.5 rounded font-medium flex items-center gap-0.5 transition-opacity"
+              style={{ backgroundColor: color + '25', color, opacity: r.done ? 0.5 : 1 }}>
+              {r.done ? '✓' : '📦'} {r.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {adding ? (
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') addReminder(); if (e.key === 'Escape') { setAdding(false); setInput('') } }}
+          onBlur={addReminder}
+          placeholder="e.g. Baseball bag"
+          className="text-[9px] w-full border-b px-0.5 focus:outline-none bg-transparent"
+          style={{ borderColor: color, color: '#374151' }}
+        />
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          className="text-[9px] opacity-40 hover:opacity-80 transition-opacity"
+          style={{ color }}>
+          + reminder
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── Event block ──────────────────────────────────────────────────────────────
 function EventBlock({
   title, startIso, endIso, color, isKid, assignment, myProfileId, spouseName,
@@ -230,17 +307,9 @@ function EventBlock({
           style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: isShort ? 1 : 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
           {title}
         </p>
-        {/* Reminder tags */}
-        {reminders && reminders.length > 0 && !isShort && (
-          <div className="flex flex-wrap gap-0.5 mt-1">
-            {reminders.map(r => (
-              <span key={r.id}
-                className="text-[9px] px-1 py-0.5 rounded font-medium flex items-center gap-0.5"
-                style={{ backgroundColor: color + '25', color }}>
-                {r.done ? '✓' : '📦'} {r.label}
-              </span>
-            ))}
-          </div>
+        {/* Reminder tags + add button */}
+        {!isShort && eventId && (
+          <ReminderTags eventId={eventId} color={color} reminders={reminders ?? []} />
         )}
       </div>
     </div>

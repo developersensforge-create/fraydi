@@ -202,7 +202,7 @@ export default function DashboardPage() {
                 ) : viewMode === 'Month' ? (
                   <MonthView currentDate={currentDate} onSelectDate={(d) => { setCurrentDate(d); setViewMode('Today') }} />
                 ) : (
-                  <><div className="text-[9px] text-gray-300 text-right mb-1">v1.7.0</div>
+                  <><div className="text-[9px] text-gray-300 text-right mb-1">v1.7.1</div>
                   <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} /></>
                 )}
               </div>
