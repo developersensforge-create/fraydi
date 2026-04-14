@@ -30,7 +30,9 @@ export async function GET(req: NextRequest) {
   rangeEnd.setDate(rangeEnd.getDate() + 30)
   const endStr = rangeEnd.toISOString().split('T')[0]
 
-  const { data, error } = await getSupabaseAdmin()
+  const db = getSupabaseAdmin()
+
+  const { data, error } = await db
     .from('watch_events')
     .select('*, watch_sources(name, color)')
     .eq('family_id', family_id)
@@ -39,7 +41,27 @@ export async function GET(req: NextRequest) {
     .order('event_date', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ events: data, tz })
+
+  // Apply keyword filter if family has interest keywords set
+  const { data: interests } = await db
+    .from('family_interests')
+    .select('keywords')
+    .eq('family_id', family_id)
+    .single()
+
+  const keywords: string[] = interests?.keywords ?? []
+  let events = data ?? []
+
+  if (keywords.length > 0) {
+    // Filter: event must match at least one keyword in title, description, location, or tags
+    const kwLower = keywords.map((k: string) => k.toLowerCase())
+    events = events.filter((ev: any) => {
+      const searchText = [ev.title, ev.description, ev.location, ...(ev.tags ?? [])].join(' ').toLowerCase()
+      return kwLower.some((kw: string) => searchText.includes(kw))
+    })
+  }
+
+  return NextResponse.json({ events, tz })
 }
 
 export async function PATCH(req: NextRequest) {
