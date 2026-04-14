@@ -314,9 +314,9 @@ function EventBlock({
           )}
         </div>
 
-        {/* Title */}
-        <p className="text-xs font-semibold text-gray-800 leading-tight mt-0.5 overflow-hidden"
-          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+        {/* Title — size and clamp based on available height */}
+        <p className={`font-semibold text-gray-800 leading-tight mt-0.5 overflow-hidden ${h < 70 ? 'text-[10px]' : 'text-xs'}`}
+          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: h < 55 ? 1 : h < 90 ? 2 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
           {title}
         </p>
         {/* Reminder tags + add button — only on tall events, never steals title space */}
@@ -337,7 +337,7 @@ function EventBlock({
 // - Color bar of every event remains visible (peeking out from under the front event)
 // - Later start time → higher z-index (front layer)
 // - Tap any event to bring it to full focus
-const LEFT_OFFSET = 14 // px per overlap level
+const LEFT_OFFSET = 12 // px per overlap level — enough to show color bar, not so much it hides title
 
 function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assignments, onAssign, onSwitch, switchLoading, remindersMap }: {
   events: Array<{id?:string; title: string; start: string; end: string; isAllDay?: boolean; calendarColor?: string; isKid?: boolean}>
@@ -385,13 +385,14 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
           const sortedCluster = [...cluster].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
           const zRank = sortedCluster.indexOf(ev) // later start = higher z = front
 
-          // Left-offset stacking: each level shifts left edge right by LEFT_OFFSET px
-          // All events share the same right edge → color bars of back events peek out
+          // Left-offset stacking: back events have leftPx=0, each subsequent level shifts right
+          // Earlier start = further back (lower z, no left offset)
+          // Later start = closer to front (higher z, more left offset so left bar still visible)
           const leftPx = zRank * LEFT_OFFSET
 
-          // Opacity: front (highest zRank) slightly transparent so back events visible
-          // Tap to focus: focused = full, others = very faded
-          const opacity = isUnfocused ? 0.3 : isFocused ? 1 : n > 1 && zRank === n - 1 ? 0.85 : 1
+          // Opacity: front layer is slightly transparent when overlapping (always see through)
+          // When focus active: focused = full, others = faded but still CLICKABLE
+          const opacity = isUnfocused ? 0.45 : isFocused ? 1 : n > 1 && zRank === n - 1 ? 0.82 : 1
 
           return (
             <div
@@ -405,8 +406,10 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
                 zIndex: isFocused ? 50 : 10 + zRank,
                 opacity,
                 transition: 'opacity 0.15s',
+                // All events always receive pointer events — clicking any event focuses it
+                pointerEvents: 'auto',
               }}
-              onClick={() => setFocusedId(prev => prev === evKey ? null : evKey)}
+              onClick={e => { e.stopPropagation(); setFocusedId(prev => prev === evKey ? null : evKey) }}
             >
               <EventBlock
                 title={ev.title}
@@ -430,10 +433,8 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
           )
         })
       )}
-      {/* Dismiss focus on column background tap */}
-      {focusedId && (
-        <div className="absolute inset-0 z-0" onClick={() => setFocusedId(null)} />
-      )}
+      {/* Tap column background to dismiss focus */}
+      <div className="absolute inset-0 z-0" onClick={() => setFocusedId(null)} style={{ pointerEvents: focusedId ? 'auto' : 'none' }} />
     </div>
   )
 }
