@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 
@@ -20,6 +20,75 @@ const INTEREST_META = {
   watch:      { icon: '👀', label: 'Watching',  colorClass: 'text-gray-500 bg-gray-100' },
   interested: { icon: '⭐', label: 'Interested', colorClass: 'text-yellow-600 bg-yellow-50' },
   hot:        { icon: '🔥', label: 'Must Go',    colorClass: 'text-orange-600 bg-orange-50' },
+}
+
+// ── Interest button — tap to cycle or pick from menu ─────────────────────────
+const LEVELS: Array<'watch' | 'interested' | 'hot'> = ['watch', 'interested', 'hot']
+
+function InterestButton({ eventId, level: initialLevel, onChanged }: {
+  eventId: string
+  level: 'watch' | 'interested' | 'hot'
+  onChanged: (id: string, level: 'watch' | 'interested' | 'hot') => void
+}) {
+  const [level, setLevel] = useState(initialLevel)
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setLevel(initialLevel) }, [initialLevel])
+
+  const meta = INTEREST_META[level]
+
+  const setInterest = async (lvl: 'watch' | 'interested' | 'hot') => {
+    setLevel(lvl)
+    setOpen(false)
+    onChanged(eventId, lvl)
+    await fetch(`/api/watch/events?id=${eventId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interest_level: lvl }),
+    }).catch(() => {})
+  }
+
+  const addToCalendar = async () => {
+    setOpen(false)
+    await fetch(`/api/watch/events?id=${eventId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ added_to_calendar: true }),
+    }).catch(() => {})
+  }
+
+  return (
+    <div className="relative flex-shrink-0" ref={ref}>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+        className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${meta.colorClass}`}>
+        {meta.icon}
+        <span className="text-[10px]">▾</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-7 bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-50 min-w-[140px]">
+            {LEVELS.map(lvl => (
+              <button key={lvl}
+                onClick={() => setInterest(lvl)}
+                className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-gray-50 ${level === lvl ? 'font-bold text-[#f96400]' : 'text-gray-700'}`}>
+                {INTEREST_META[lvl].icon} {INTEREST_META[lvl].label}
+                {level === lvl && <span className="ml-auto text-[#f96400]">✓</span>}
+              </button>
+            ))}
+            <div className="border-t border-gray-100 mt-1 pt-1">
+              <button onClick={addToCalendar}
+                className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                📅 Add to calendar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 function toLocalDate(dateStr?: string | null): Date | null {
@@ -161,9 +230,8 @@ export default function WatchList() {
                         </div>
                       </div>
 
-                      <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${meta.colorClass}`}>
-                        {meta.icon}
-                      </span>
+                      <InterestButton eventId={event.id} level={event.interest_level ?? 'watch'}
+                        onChanged={(id, lvl) => setEvents(prev => prev.map(e => e.id === id ? {...e, interest_level: lvl} : e))} />
                     </div>
                   </li>
                 )

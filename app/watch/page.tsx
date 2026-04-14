@@ -125,6 +125,9 @@ export default function WatchPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [syncing, setSyncing] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState<Set<string>>(new Set())
+  const [keywords, setKeywords] = useState<string[]>([])
+  const [newKeyword, setNewKeyword] = useState('')
+  const [savingKeywords, setSavingKeywords] = useState(false)
 
   const fetchSources = async (fid: string) => {
     const res = await fetch(`/api/watch/sources?family_id=${fid}`)
@@ -145,6 +148,10 @@ export default function WatchPage() {
         }
         setFamilyId(prof.family_id)
         await fetchSources(prof.family_id)
+        // Load interest keywords
+        fetch('/api/watch/interests').then(r => r.json()).then(d => {
+          setKeywords(d.interests?.keywords ?? [])
+        }).catch(() => {})
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Unknown error')
       } finally {
@@ -272,6 +279,60 @@ export default function WatchPage() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Interest Keywords */}
+            <Card variant="bordered">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-gray-700">🎯 Interest Keywords</h2>
+                    <p className="text-xs text-gray-400 mt-0.5">AI uses these to find relevant events for your family</p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardBody>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {keywords.length === 0 && <p className="text-xs text-gray-400">No keywords yet. Add topics your family cares about.</p>}
+                  {keywords.map(kw => (
+                    <span key={kw} className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 px-2.5 py-1 rounded-full border border-orange-200">
+                      {kw}
+                      <button onClick={async () => {
+                        const next = keywords.filter(k => k !== kw)
+                        setKeywords(next)
+                        await fetch('/api/watch/interests', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ keywords: next }) })
+                      }} className="ml-0.5 text-orange-400 hover:text-red-500 font-bold leading-none">×</button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={newKeyword}
+                    onChange={e => setNewKeyword(e.target.value)}
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter' && newKeyword.trim()) {
+                        const next = [...new Set([...keywords, newKeyword.trim().toLowerCase()])]
+                        setKeywords(next)
+                        setNewKeyword('')
+                        await fetch('/api/watch/interests', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ keywords: next }) })
+                      }
+                    }}
+                    placeholder="e.g. baseball, music festival, kids theater…"
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f96400]"
+                  />
+                  <button onClick={async () => {
+                    if (!newKeyword.trim()) return
+                    const next = [...new Set([...keywords, newKeyword.trim().toLowerCase()])]
+                    setKeywords(next)
+                    setNewKeyword('')
+                    setSavingKeywords(true)
+                    await fetch('/api/watch/interests', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ keywords: next }) })
+                    setSavingKeywords(false)
+                  }} className="px-3 py-2 bg-[#f96400] text-white text-sm font-semibold rounded-lg hover:bg-[#d95400]">
+                    {savingKeywords ? '…' : 'Add'}
+                  </button>
+                </div>
+              </CardBody>
+            </Card>
+
             <Card variant="bordered">
               <CardHeader>
                 <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
