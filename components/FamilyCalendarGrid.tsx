@@ -31,7 +31,7 @@ type Notification = {
 // ── Grid config ──────────────────────────────────────────────────────────────
 const HOUR_HEIGHT = 64        // px per hour
 const START_HOUR = 7          // 7am
-const END_HOUR = 22           // 10pm
+const END_HOUR = 24           // midnight
 const TOTAL_HOURS = END_HOUR - START_HOUR
 const TIME_LABEL_W = 44       // px for time labels on left
 const GRID_HEIGHT = TOTAL_HOURS * HOUR_HEIGHT
@@ -145,9 +145,10 @@ function ReminderTags({ eventId, color, reminders: initialReminders }: {
           style={{ borderColor: color, color: '#374151' }}
         />
       ) : (
+        // Only show "+ reminder" on hover — never takes layout space by default
         <button
           onClick={() => setAdding(true)}
-          className="text-[9px] opacity-40 hover:opacity-80 transition-opacity"
+          className="text-[9px] opacity-0 group-hover/event:opacity-50 hover:!opacity-100 transition-opacity h-0 group-hover/event:h-auto overflow-hidden"
           style={{ color }}>
           + reminder
         </button>
@@ -201,30 +202,38 @@ function EventBlock({
   if (isSkipped) return null
 
   // Left-bar hollow box style (Outlook/Google Calendar style)
+  // Hollow = white/very light bg, colored left bar, thin border
+  const barColor = color
   const bgColor = isNoDriver ? '#fafafa' : '#ffffff'
   const boxOpacity = isNoDriver ? 0.6 : 1
   const borderColor = isNoDriver ? color + '40' : color + '30'
-  const barBorder = isNoDriver
-    ? `3px dashed ${color}80`
+  const barStyle = isNoDriver
+    ? `2px dashed ${color}80`   // dashed bar for no-driver
     : isSpousePending
-      ? `3px dashed ${color}`
-      : `4px solid ${color}`
+      ? `3px dashed ${color}`   // dashed bar for pending
+      : `4px solid ${barColor}` // solid bar default
 
   return (
-    // EventBlock fills its wrapper div entirely — no absolute positioning here
     <div
-      className="rounded-r-lg overflow-hidden flex w-full h-full"
+      className="absolute rounded-r-lg overflow-hidden flex group/event"
       style={{
+        top,
+        height: Math.max(h, 20),
+        left: 0,
+        right: 0,
         backgroundColor: bgColor,
         border: `1px solid ${borderColor}`,
         borderLeft: 'none',
+        zIndex: 10 + stackIndex,
         opacity: boxOpacity,
       }}
     >
       {/* Left color bar */}
-      <div className="flex-shrink-0" style={{
-        width: 4,
-        borderLeft: barBorder,
+      <div className="flex-shrink-0 rounded-l-lg" style={{
+        width: isNoDriver ? 3 : 4,
+        background: barStyle.includes('dashed') ? 'transparent' : barColor,
+        borderLeft: barStyle,
+        marginLeft: -1,
       }} />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0" style={{ padding: isShort ? '2px 4px' : '6px' }}>
         {/* Short event: single-row layout — time + title inline */}
@@ -315,8 +324,8 @@ function EventBlock({
           style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
           {title}
         </p>
-        {/* Reminder tags + add button */}
-        {eventId && (
+        {/* Reminder tags + add button — only on tall events, never steals title space */}
+        {!isShort && eventId && (
           <ReminderTags eventId={eventId} color={color} reminders={reminders ?? []} />
         )}
         </>
