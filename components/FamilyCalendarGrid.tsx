@@ -226,7 +226,23 @@ function EventBlock({
         width: 4,
         borderLeft: barBorder,
       }} />
-      <div className="flex-1 flex flex-col p-1.5 overflow-hidden min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0" style={{ padding: isShort ? '2px 4px' : '6px' }}>
+        {/* Short event: single-row layout — time + title inline */}
+        {isShort ? (
+          <div className="flex items-center gap-1 w-full overflow-hidden">
+            {isKid && <span className="text-[10px] flex-shrink-0">🧒</span>}
+            <span className="text-[10px] font-medium flex-shrink-0 whitespace-nowrap" style={{ color }}>{fmtTime(startIso)}</span>
+            <span className="text-[10px] font-semibold text-gray-800 truncate flex-1 min-w-0">{title}</span>
+            {isKid && assignedTo && dutyLabel && (
+              <span className="text-[8px] px-1 py-0.5 rounded flex-shrink-0 whitespace-nowrap"
+                style={{ backgroundColor: color + '25', color }}>
+                {assignedTo === myProfileId ? '🚗' : assignedTo === 'none' ? '📍' : assignedTo === 'both' ? '🚗×2' : '🚗?'}
+              </span>
+            )}
+          </div>
+        ) : (
+        <>
+        {/* Normal event: two-row layout */}
         {/* Top row: time + kid indicator + duty dropdown */}
         <div className="flex items-center justify-between gap-1 flex-shrink-0">
           <div className="flex items-center gap-1 min-w-0">
@@ -295,13 +311,15 @@ function EventBlock({
         </div>
 
         {/* Title */}
-        <p className={`font-semibold text-gray-800 leading-tight mt-0.5 overflow-hidden ${isShort ? 'text-[10px]' : 'text-xs'}`}
-          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: isShort ? 1 : 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+        <p className="text-xs font-semibold text-gray-800 leading-tight mt-0.5 overflow-hidden"
+          style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
           {title}
         </p>
         {/* Reminder tags + add button */}
-        {!isShort && eventId && (
+        {eventId && (
           <ReminderTags eventId={eventId} color={color} reminders={reminders ?? []} />
+        )}
+        </>
         )}
       </div>
     </div>
