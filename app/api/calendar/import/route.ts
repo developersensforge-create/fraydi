@@ -189,8 +189,9 @@ async function parseIcal(icalText: string): Promise<ParsedEvent[]> {
               if (exdates.has(dateStr)) continue
 
               const occStart = `${dateStr}T${timeOnly}${tzOffset}`
-              const occEndDate = new Date(new Date(occStart).getTime() + duration)
-              const occEnd = occEndDate.toISOString().replace('Z', tzOffset === 'Z' ? 'Z' : '').slice(0, 19) + tzOffset
+              // occEnd: plain UTC — do NOT re-attach tzOffset (would double-shift)
+              const _occEndMs = new Date(occStart).getTime() + duration
+              const occEnd = new Date(_occEndMs).toISOString()
               const occUid = `${uid}_${y2}${mo2}${d2}`
 
               events.push({ uid: occUid, title, start_time: occStart, end_time: occEnd, description, location })
