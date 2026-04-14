@@ -215,16 +215,11 @@ function EventBlock({
 
   return (
     <div
-      className="absolute rounded-r-lg overflow-hidden flex group/event"
+      className="rounded-r-lg overflow-hidden flex group/event w-full h-full"
       style={{
-        top,
-        height: Math.max(h, 20),
-        left: 0,
-        right: 0,
         backgroundColor: bgColor,
         border: `1px solid ${borderColor}`,
         borderLeft: 'none',
-        zIndex: 10 + stackIndex,
         opacity: boxOpacity,
       }}
     >
