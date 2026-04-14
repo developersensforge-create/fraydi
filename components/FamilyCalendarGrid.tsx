@@ -66,8 +66,10 @@ function topPx(iso: string): number {
 
 function heightPx(startIso: string, endIso: string): number {
   const startMins = toMinutesFromMidnight(startIso)
-  const endMins = toMinutesFromMidnight(endIso)
-  const durationMins = Math.max(15, endMins - startMins)
+  let endMins = toMinutesFromMidnight(endIso)
+  // Handle midnight-crossing events: end < start means end is next day
+  if (endMins <= startMins) endMins += 24 * 60
+  const durationMins = Math.max(30, endMins - startMins) // min 30min for readability
   return (durationMins / 60) * HOUR_HEIGHT
 }
 
@@ -230,19 +232,14 @@ function EventBlock({
         borderLeft: barStyle,
         marginLeft: -1,
       }} />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0" style={{ padding: isShort ? '2px 4px' : '6px' }}>
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0" style={{ padding: isShort ? '1px 3px' : '5px 6px' }}>
         {/* Short event: single-row layout — time + title inline */}
         {isShort ? (
-          <div className="flex items-center gap-1 w-full overflow-hidden">
-            {isKid && <span className="text-[10px] flex-shrink-0">🧒</span>}
-            <span className="text-[10px] font-medium flex-shrink-0 whitespace-nowrap" style={{ color }}>{fmtTime(startIso)}</span>
-            <span className="text-[10px] font-semibold text-gray-800 truncate flex-1 min-w-0">{title}</span>
-            {isKid && assignedTo && dutyLabel && (
-              <span className="text-[8px] px-1 py-0.5 rounded flex-shrink-0 whitespace-nowrap"
-                style={{ backgroundColor: color + '25', color }}>
-                {assignedTo === myProfileId ? '🚗' : assignedTo === 'none' ? '📍' : assignedTo === 'both' ? '🚗×2' : '🚗?'}
-              </span>
-            )}
+          // Short event: single line — time · title, absolutely fills the box
+          <div className="flex items-center gap-1 w-full h-full overflow-hidden" style={{ minHeight: 0 }}>
+            {isKid && <span className="text-[9px] flex-shrink-0 leading-none">🧒</span>}
+            <span className="text-[9px] font-medium flex-shrink-0 whitespace-nowrap leading-none" style={{ color }}>{fmtTime(startIso)}</span>
+            <span className="text-[9px] font-semibold text-gray-800 truncate flex-1 min-w-0 leading-none">{title}</span>
           </div>
         ) : (
         <>
@@ -400,7 +397,7 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
               style={{
                 position: 'absolute',
                 top: topPx(ev.start),
-                height: Math.max(heightPx(ev.start, ev.end), 20),
+                height: Math.max(heightPx(ev.start, ev.end), 24),
                 left: leftPx,
                 right: 0,
                 zIndex: isFocused ? 50 : 10 + zRank,
