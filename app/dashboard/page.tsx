@@ -196,7 +196,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
                 ) : (
-                  <><div className="text-[9px] text-gray-300 text-right mb-1">v1.5.5</div>
+                  <><div className="text-[9px] text-gray-300 text-right mb-1">v1.7.6</div>
                   <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} /></>
                 )}
               </div>
