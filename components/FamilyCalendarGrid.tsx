@@ -31,7 +31,7 @@ type Notification = {
 // ── Grid config ──────────────────────────────────────────────────────────────
 const HOUR_HEIGHT = 64        // px per hour
 const START_HOUR = 7          // 7am
-const END_HOUR = 22           // 10pm
+const END_HOUR = 24           // midnight
 const TOTAL_HOURS = END_HOUR - START_HOUR
 const TIME_LABEL_W = 44       // px for time labels on left
 const GRID_HEIGHT = TOTAL_HOURS * HOUR_HEIGHT
@@ -145,9 +145,10 @@ function ReminderTags({ eventId, color, reminders: initialReminders }: {
           style={{ borderColor: color, color: '#374151' }}
         />
       ) : (
+        // Only show "+ reminder" on hover — never takes layout space by default
         <button
           onClick={() => setAdding(true)}
-          className="text-[9px] opacity-40 hover:opacity-80 transition-opacity"
+          className="text-[9px] opacity-0 group-hover/event:opacity-50 hover:!opacity-100 transition-opacity h-0 group-hover/event:h-auto overflow-hidden"
           style={{ color }}>
           + reminder
         </button>
@@ -214,7 +215,7 @@ function EventBlock({
 
   return (
     <div
-      className="absolute rounded-r-lg overflow-hidden flex"
+      className="absolute rounded-r-lg overflow-hidden flex group/event"
       style={{
         top,
         height: Math.max(h, 20),
@@ -323,8 +324,8 @@ function EventBlock({
           style={{ wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
           {title}
         </p>
-        {/* Reminder tags + add button */}
-        {eventId && (
+        {/* Reminder tags + add button — only on tall events, never steals title space */}
+        {!isShort && eventId && (
           <ReminderTags eventId={eventId} color={color} reminders={reminders ?? []} />
         )}
         </>
