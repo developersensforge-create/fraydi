@@ -437,12 +437,15 @@ function CalColumn({ events, color, isSpouse, myProfileId, spouseProfile, assign
 }
 
 // ── Full-width kid event — spans both columns (unassigned or 'none') ─────────
-function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign }: {
+function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign, stackOffset = 0 }: {
   ev: CalEvent; myProfileId: string; spouseProfile?: Profile | null
   assignment: Assignment | null
   onAssign: (eventId: string, to: string | null) => void
+  stackOffset?: number
 }) {
   const [open, setOpen] = useState(false)
+  const [dropPos, setDropPos] = useState<{top:number;right:number} | null>(null)
+  const dropBtnRef2 = useRef<HTMLButtonElement>(null)
   const top = topPx(ev.start)
   const h = Math.max(heightPx(ev.start, ev.end), 44)
   const isNoDriver = assignment?.assigned_to === 'none'
@@ -450,9 +453,11 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign }: 
 
   return (
     // Hollow box + left color bar — same style as EventBlock
-    <div className="absolute left-0 right-0 z-20 flex rounded-r-lg overflow-hidden"
+    // stackOffset: left-shift for overlapping full-width kids
+    <div className="absolute right-0 z-20 flex rounded-r-lg overflow-hidden"
       style={{
         top, height: h,
+        left: stackOffset,
         backgroundColor: '#ffffff',
         border: `1px solid ${color}30`,
         borderLeft: 'none',
@@ -471,9 +476,16 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign }: 
           </div>
           <p className="text-xs font-semibold text-gray-800 leading-tight mt-0.5 truncate">{ev.title}</p>
         </div>
-        {/* Compact dropdown */}
-        <div className="relative flex-shrink-0">
-          <button onClick={() => setOpen(o => !o)}
+        {/* Compact dropdown — portal so it's never clipped */}
+        <div className="flex-shrink-0">
+          <button
+            ref={dropBtnRef2}
+            onClick={e => {
+              e.stopPropagation()
+              const r = dropBtnRef2.current?.getBoundingClientRect()
+              if (r) setDropPos({ top: r.bottom + 4, right: window.innerWidth - r.right })
+              setOpen(o => !o)
+            }}
             className="text-[9px] font-semibold px-2 py-1 rounded-lg border flex items-center gap-0.5"
             style={isNoDriver
               ? { backgroundColor: color+'20', color, borderColor: color+'60' }
@@ -481,10 +493,12 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign }: 
             }>
             {isNoDriver ? '📍 No driver ▾' : 'Driver? ▾'}
           </button>
-          {open && (
+          {open && dropPos && typeof document !== 'undefined' && createPortal(
             <>
-              <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-              <div className="absolute right-0 top-6 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 min-w-[140px]">
+              <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+              <div className="fixed bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-[9999] min-w-[150px]"
+                style={{ top: dropPos.top, right: dropPos.right }}
+                onClick={e => e.stopPropagation()}>
                 {[
                   { val: myProfileId, label: '🚗 I drive' },
                   ...(spouseProfile ? [{ val: spouseProfile.id, label: `🚗 ${spouseProfile.name.split(' ')[0]} drives` }] : []),
@@ -500,12 +514,12 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign }: 
                 ))}
                 <button
                   onClick={() => { onAssign(ev.id, 'skip'); setOpen(false) }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 border-t border-gray-100"
-                >
+                  className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 border-t border-gray-100">
                   🚫 Skip this event
                 </button>
               </div>
-            </>
+            </>,
+            document.body
           )}
         </div>
       </div>
@@ -793,16 +807,24 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
           )}
 
           {/* Full-width kids: unassigned (Driver? prompt) or 'none' (no driver needed, faded) */}
-          {fullWidthKids.map(ev => (
-            <KidFullWidth
-              key={ev.id}
-              ev={ev}
-              myProfileId={myProfileId}
-              spouseProfile={spouseProfile}
-              assignment={getAssignment(ev) ?? null}
-              onAssign={assignEvent}
-            />
-          ))}
+          {/* Apply left-offset stacking for overlapping full-width kids — same 12px offset as CalColumn */}
+          {fullWidthKids.map((ev, idx) => {
+            // Count how many previous kids overlap with this one
+            const overlapRank = fullWidthKids.slice(0, idx).filter(prev =>
+              new Date(prev.start) < new Date(ev.end) && new Date(ev.start) < new Date(prev.end)
+            ).length
+            return (
+              <KidFullWidth
+                key={ev.id}
+                ev={ev}
+                myProfileId={myProfileId}
+                spouseProfile={spouseProfile}
+                assignment={getAssignment(ev) ?? null}
+                onAssign={assignEvent}
+                stackOffset={overlapRank * 12}
+              />
+            )
+          })}
         </div>
       </div>
     </div>
