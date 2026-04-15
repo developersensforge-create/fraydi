@@ -7,6 +7,8 @@ import EventCard, { FamilyEvent } from '@/components/EventCard'
 import CoordinationAlert from '@/components/CoordinationAlert'
 import WatchList from '@/components/WatchList'
 import FamilyCalendarGrid from '@/components/FamilyCalendarGrid'
+import WeekView from '@/components/WeekView'
+import MonthView from '@/components/MonthView'
 import RoutinesCard from '@/components/RoutinesCard'
 
 type ViewMode = 'Today' | 'Week' | 'Month'
@@ -195,8 +197,12 @@ export default function DashboardPage() {
                     <p className="text-2xl mb-2">📅</p>
                     <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
+                ) : viewMode === 'Week' ? (
+                  <WeekView startDate={currentDate} myProfileId={myProfileId ?? 'loading'} />
+                ) : viewMode === 'Month' ? (
+                  <MonthView currentDate={currentDate} onSelectDate={d => { setCurrentDate(d); setViewMode('Today') }} />
                 ) : (
-                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.8.2</div>
+                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.8.3</div>
                   <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} /></>
                 )}
               </div>
