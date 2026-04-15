@@ -196,7 +196,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-gray-600">Sign in with Google to see your calendar</p>
                   </div>
                 ) : (
-                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.8.0</div>
+                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.8.1</div>
                   <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} /></>
                 )}
               </div>
@@ -209,8 +209,8 @@ export default function DashboardPage() {
           {/* ── Right column: Conflict Alerts + Watch List ── */}
           {/* Mobile order: Conflict Alerts appears right after Calendar (before Routines) via order classes */}
           <aside className="lg:w-72 flex-shrink-0 flex flex-col gap-6">
-            <CoordinationAlert />
-            <WatchList />
+            <CoordinationAlert date={formatDate(currentDate)} />
+            <WatchList date={formatDate(currentDate)} />
           </aside>
         </div>
       </main>

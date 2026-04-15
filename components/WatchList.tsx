@@ -106,10 +106,11 @@ function formatDay(d: Date): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-export default function WatchList() {
+export default function WatchList({ date }: { date?: string }) {
   const [events, setEvents] = useState<WatchEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [weekCount, setWeekCount] = useState(0)
+  const dateStr = date ?? new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
   useEffect(() => {
     const load = async () => {
@@ -119,8 +120,7 @@ export default function WatchList() {
         const prof = await profRes.json()
         if (!prof.family_id) return
 
-        const today = new Date().toISOString().split('T')[0]
-        const res = await fetch(`/api/watch/events?family_id=${prof.family_id}&date=${today}`)
+        const res = await fetch(`/api/watch/events?family_id=${prof.family_id}&date=${dateStr}`)
         if (!res.ok) return
         const data = await res.json()
         const all: WatchEvent[] = data.events ?? []
@@ -139,7 +139,7 @@ export default function WatchList() {
       }
     }
     load()
-  }, [])
+  }, [dateStr])
 
   const today = new Date(); today.setHours(0,0,0,0)
   const todayEvents = events.filter(e => {

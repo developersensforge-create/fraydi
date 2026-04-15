@@ -19,19 +19,21 @@ function formatTime(iso: string) {
   } catch { return '' }
 }
 
-export default function CoordinationAlert() {
+export default function CoordinationAlert({ date }: { date?: string }) {
   const [conflicts, setConflicts] = useState<ConflictAlert[]>([])
   const [loading, setLoading] = useState(true)
   const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set())
+  const dateStr = date ?? new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    fetch(`/api/family/conflicts?date=${today}`)
+    setLoading(true)
+    setConflicts([])
+    fetch(`/api/family/conflicts?date=${dateStr}`)
       .then(r => r.json())
       .then(data => setConflicts(data.conflicts ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [dateStr])
 
   const resolve = (id: string) => {
     setResolvedIds(prev => new Set([...prev, id]))
@@ -67,7 +69,7 @@ export default function CoordinationAlert() {
               <span className="text-base">✅</span>
             </div>
             <div>
-              <p className="text-sm font-semibold text-green-700">No conflicts today</p>
+              <p className="text-sm font-semibold text-green-700">No conflicts {date && date !== new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) ? 'that day' : 'today'}</p>
               <p className="text-xs text-gray-400">Kids are covered — family schedule looks clear</p>
             </div>
           </div>
