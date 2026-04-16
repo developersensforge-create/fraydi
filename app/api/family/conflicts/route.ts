@@ -176,7 +176,10 @@ export async function GET(req: NextRequest) {
         ae.start < kw.windowEnd && ae.end > kw.windowStart
       )
       // Filter out shared events — if ALL busy events are shared, adult is effectively free
-      const nonSharedBusy = busy.filter(ae => !isSharedEvent(ae))
+      const nonSharedBusy = busy.filter(ae => {
+        const key = `${ae.title.toLowerCase().trim()}::${ae.start.toISOString()}`
+        return !sharedEventKeys.has(key)
+      })
       if (nonSharedBusy.length > 0) {
         busyAdults.push({
           personName: profile.full_name ?? profile.email ?? 'Someone',
