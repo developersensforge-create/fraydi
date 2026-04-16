@@ -277,7 +277,7 @@ export default function DashboardPage() {
                 ) : viewMode === 'Month' ? (
                   <MonthView currentDate={currentDate} onSelectDate={d => { setCurrentDate(d); setViewMode('Today') }} />
                 ) : (
-                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.8.5</div>
+                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.8.6</div>
                   <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} /></>
                 )}
               </div>

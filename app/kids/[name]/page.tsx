@@ -7,7 +7,7 @@ import ShoppingList from '@/components/ShoppingList'
 
 type CalEvent = {
   id: string; title: string; start: string; end: string
-  isAllDay: boolean; calendarColor?: string; calendarName?: string
+  isAllDay: boolean; calendarColor?: string; calendarName?: string; calendarOwner?: string
 }
 
 function getDeviceTz() {
@@ -35,21 +35,19 @@ export default function KidDashboard() {
   const today = new Date()
   const tz = encodeURIComponent(getDeviceTz())
 
-  // Filter events by calendar owner name — use calendarName first (most reliable)
-  // Fall back to title keywords only for THIS kid's name, never other kids
   const nameLower = name.toLowerCase()
   const isKidEvent = (e: CalEvent) => {
-    // Primary: calendar name contains this kid's name
+    // Primary: explicit calendarOwner field set by user in Calendar settings (most accurate)
+    if (e.calendarOwner) {
+      return e.calendarOwner.toLowerCase() === nameLower
+    }
+    // Secondary: calendar name contains this kid's name exactly
     const calName = (e.calendarName ?? '').toLowerCase()
     if (calName.includes(nameLower)) return true
-    // Secondary: event title contains this kid's name exactly
-    const titleLower = e.title.toLowerCase()
-    if (titleLower.includes(nameLower)) return true
-    // Tertiary: activity keywords — only if calendarName indicates a kid calendar (not adult)
-    const isAdultCal = calName.includes('work') || calName.includes('ruizhi') || calName.includes('liwei') || calName.includes('@')
-    if (isAdultCal) return false
-    const activityKeywords = ['baseball', 'soccer', 'swim', 'fll', 'scioly', 'chess', 'activit', '4v4', 'riverbat', '12u', '6u', 'library']
-    return activityKeywords.some(k => calName.includes(k) || titleLower.includes(k))
+    // Tertiary: event title contains this kid's name
+    if (e.title.toLowerCase().includes(nameLower)) return true
+    // Do NOT use generic activity keywords — they cross-contaminate kids
+    return false
   }
 
   // Load family_id + notes from DB

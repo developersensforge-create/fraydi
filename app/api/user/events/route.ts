@@ -88,11 +88,11 @@ export async function GET(req: NextRequest) {
       supa(`/user_google_cal_prefs?user_email=eq.${encodeURIComponent(email)}`),
     ]);
     const calListData = calListRes.ok ? await calListRes.json() : { items: [] };
-    const prefs: Array<{ google_calendar_id: string; display_name?: string; color?: string; visible: boolean }> =
+    const prefs: Array<{ google_calendar_id: string; display_name?: string; color?: string; visible: boolean; owner_name?: string; owner_member_name?: string; owner_type?: string }> =
       prefsRes.ok ? await prefsRes.json() : [];
     const prefMap = new Map(prefs.map(p => [p.google_calendar_id, p]));
 
-    const calMap: Record<string, { name: string; color: string; visible: boolean }> = {};
+    const calMap: Record<string, { name: string; color: string; visible: boolean; ownerName?: string }> = {};
     for (const cal of calListData.items ?? []) {
       const pref = prefMap.get(cal.id);
       // Clean calendar name — if it looks like a URL, use a friendly name
@@ -100,10 +100,13 @@ export async function GET(req: NextRequest) {
       const calName = rawName.startsWith('http') || rawName.startsWith('webcal')
         ? (cal.summaryOverride ?? 'Subscribed Calendar')
         : rawName
+      // Resolve owner: owner_member_name (e.g. "Hayden") > owner_name > null
+      const ownerName = pref?.owner_member_name ?? pref?.owner_name ?? undefined
       calMap[cal.id] = {
         name: calName,
         color: pref?.color ?? cal.backgroundColor ?? "#4285F4",
         visible: pref?.visible ?? true,
+        ownerName,
       };
     }
 
@@ -125,6 +128,7 @@ export async function GET(req: NextRequest) {
         calendarId: calId,
         calendarName: calInfo.name,
         calendarColor: calInfo.color,
+        calendarOwner: calInfo.ownerName ?? null,  // e.g. "Hayden", "Hunter", "Ruizhi"
         source: "google",
         htmlLink: ev.htmlLink,
       });

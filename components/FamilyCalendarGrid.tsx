@@ -587,13 +587,14 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
           const isWorkCal = name.includes('work') || name.includes('sensforge') ||
             name.includes('ruizhi') || name.includes('primary') || name.includes('personal') ||
             name === 'ruizhi.hong@gmail.com' || (e.calendarName ?? '').includes('@')
-          // Kid event detection — calendar name keywords only (no title matching to avoid false positives)
+          // Kid event: calendarOwner set to a kid name, OR calendar name contains kid keyword
+          const ownerLower = ((e as any).calendarOwner ?? '').toLowerCase()
           const isKid = !isWorkCal && (
-            name.includes('kid') || name.includes('hunter') ||
-            name.includes('hayden') || name.includes('baseball') ||
-            name.includes('soccer') || name.includes('activit') || name.includes('4v4')
+            (ownerLower && !['ruizhi','liwei','me','spouse'].includes(ownerLower)) ||
+            name.includes('kid') || name.includes('hunter') || name.includes('hayden') ||
+            name.includes('baseball') || name.includes('soccer') || name.includes('activit') || name.includes('4v4')
           )
-          return { id: e.id, title: e.title, start: e.start, end: e.end, isAllDay: e.isAllDay, calendarName: e.calendarName, calendarColor: e.calendarColor, source: e.source, isKid }
+          return { id: e.id, title: e.title, start: e.start, end: e.end, isAllDay: e.isAllDay, calendarName: e.calendarName, calendarColor: e.calendarColor, calendarOwner: (e as any).calendarOwner, source: e.source, isKid }
         })
 
         // Dedup spouse events
