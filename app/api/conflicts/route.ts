@@ -4,7 +4,12 @@ import { authOptions } from '@/lib/authOptions'
 import { createServerSupabase } from '@/lib/supabaseServer'
 import OpenAI from 'openai'
 
-function getOpenAI() { return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) }
+// Lazy-initialize to avoid build-time env check failure
+let _openai: OpenAI | null = null
+function getOpenAI() {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 interface CalEvent {
   id: string
