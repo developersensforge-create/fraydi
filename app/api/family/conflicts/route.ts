@@ -113,6 +113,37 @@ export async function GET(req: NextRequest) {
     })
   )
 
+  // ── 2b. Build shared event set ──────────────────────────────────────────
+  // A "shared" event is one that appears on multiple adults' calendars with
+  // the same normalized title AND overlapping times — both parents attending together.
+  // Key: normalized title + overlapping adult profile IDs
+  type SharedEventKey = string // `${normalizedTitle}::${start.toISOString()}`
+
+  const sharedEventKeys = new Set<string>()
+
+  const adultProfileList = Array.from(adultEventsByProfile.entries())
+  for (let i = 0; i < adultProfileList.length; i++) {
+    for (let j = i + 1; j < adultProfileList.length; j++) {
+      const [, eventsA] = adultProfileList[i]
+      const [, eventsB] = adultProfileList[j]
+      for (const a of eventsA) {
+        const normA = a.title.toLowerCase().trim()
+        for (const b of eventsB) {
+          const normB = b.title.toLowerCase().trim()
+          if (normA === normB && a.start < b.end && b.start < a.end) {
+            // Both adults have the same event — mark as shared
+            sharedEventKeys.add(`${normA}::${a.start.toISOString()}`)
+            sharedEventKeys.add(`${normB}::${b.start.toISOString()}`)
+          }
+        }
+      }
+    }
+  }
+
+  const isSharedEvent = (ev: { title: string; start: Date }): boolean => {
+    return sharedEventKeys.has(`${ev.title.toLowerCase().trim()}::${ev.start.toISOString()}`)
+  }
+
   // ── 3. Detect conflicts ─────────────────────────────────────────────────
   const conflicts: ConflictAlert[] = []
 
@@ -144,10 +175,12 @@ export async function GET(req: NextRequest) {
       const busy = adultEvents.filter(ae =>
         ae.start < kw.windowEnd && ae.end > kw.windowStart
       )
-      if (busy.length > 0) {
+      // Filter out shared events — if ALL busy events are shared, adult is effectively free
+      const nonSharedBusy = busy.filter(ae => !isSharedEvent(ae))
+      if (nonSharedBusy.length > 0) {
         busyAdults.push({
           personName: profile.full_name ?? profile.email ?? 'Someone',
-          title: busy[0].title,
+          title: nonSharedBusy[0].title,
           color: profile.color ?? '#6366f1',
         })
       } else {
@@ -156,6 +189,16 @@ export async function GET(req: NextRequest) {
     }
 
     const totalAdults = adultEventsByProfile.size
+
+    // Detect shared/duplicate events: if ALL busy adults have same title+time, they're attending together
+    // (e.g. both Ruizhi and Liwei have "Riverbats game" — that's one shared event, not a conflict)
+    const isSharedEvent = busyAdults.length === totalAdults && totalAdults > 1 &&
+      busyAdults.every(a => {
+        const titleNorm = a.title.trim().toLowerCase().slice(0, 40)
+        return busyAdults[0].title.trim().toLowerCase().slice(0, 40) === titleNorm
+      })
+    if (isSharedEvent) continue // Both adults at same event — no coverage conflict
+
     // Find simultaneous kid events
     const simultaneousKids = kidEventWindows.filter((other, j) =>
       j !== i && other.windowStart < kw.windowEnd && other.windowEnd > kw.windowStart

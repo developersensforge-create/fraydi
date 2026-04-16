@@ -520,6 +520,21 @@ function KidFullWidth({ ev, myProfileId, spouseProfile, assignment, onAssign }: 
   )
 }
 
+// ── Current time helpers ─────────────────────────────────────────────────────
+function getNowTopPx(): number | null {
+  const tz = getDeviceTz()
+  const now = new Date()
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: false,
+  }).formatToParts(now)
+  const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0')
+  const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
+  const hour = h === 24 ? 0 : h
+  if (hour < START_HOUR || hour >= END_HOUR) return null
+  const offsetMins = hour * 60 + m - START_HOUR * 60
+  return (offsetMins / 60) * HOUR_HEIGHT
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 export default function FamilyCalendarGrid({ date, myProfileId }: { date: string; myProfileId: string }) {
   const [myEvents, setMyEvents] = useState<CalEvent[]>([])
@@ -531,6 +546,14 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [switchLoading, setSwitchLoading] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [nowLinePx, setNowLinePx] = useState<number | null>(null)
+
+  // Update current time marker every minute
+  useEffect(() => {
+    setNowLinePx(getNowTopPx())
+    const interval = setInterval(() => setNowLinePx(getNowTopPx()), 60_000)
+    return () => clearInterval(interval)
+  }, [])
 
   const loadAssignments = async () => {
     const res = await fetch(`/api/coordination/assign?date=${date}`)
@@ -766,6 +789,19 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
               style={{ top: (h - START_HOUR) * HOUR_HEIGHT, zIndex: 1 }} />
           ))}
 
+          {/* Current time marker — only show when viewing today */}
+          {date === new Date().toLocaleDateString('en-CA', { timeZone: getDeviceTz() }) && (() => {
+            const nowMins = toMinutesFromMidnight(new Date().toISOString())
+            const nowTop = Math.max(0, (nowMins - START_HOUR * 60) / 60 * HOUR_HEIGHT)
+            return nowTop < GRID_HEIGHT ? (
+              <div className="absolute left-0 right-0 z-30 flex items-center pointer-events-none"
+                style={{ top: nowTop }}>
+                <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0 -ml-1" />
+                <div className="flex-1 border-t-2 border-red-400" />
+              </div>
+            ) : null
+          })()}
+
           {/* My column */}
           <div className="relative flex-1">
             <CalColumn
@@ -796,6 +832,14 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
                 switchLoading={switchLoading}
                 remindersMap={remindersMap}
               />
+            </div>
+          )}
+
+          {/* Current time marker */}
+          {nowLinePx !== null && (
+            <div className="absolute left-0 right-0 pointer-events-none" style={{ top: nowLinePx, zIndex: 20 }}>
+              <div className="absolute" style={{ left: 0, top: -4, width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ef4444' }} />
+              <div style={{ height: 2, backgroundColor: '#ef4444', marginLeft: 8 }} />
             </div>
           )}
 
