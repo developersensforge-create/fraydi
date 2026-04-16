@@ -12,7 +12,7 @@ import { authOptions } from '@/lib/authOptions'
 import { createServerSupabase } from '@/lib/supabaseServer'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() { return new Resend(process.env.RESEND_API_KEY) }
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions) as any
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       })
 
       // Email notification
-      await resend.emails.send({
+      await getResend().emails.send({
         from: process.env.FRAYDI_FROM_EMAIL ?? 'Fraydi <noreply@dayryz.com>',
         to: assignee.email,
         subject: `You're on duty: ${event?.title ?? 'an activity'}`,

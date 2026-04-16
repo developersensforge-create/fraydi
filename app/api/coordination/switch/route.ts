@@ -12,7 +12,7 @@ import { authOptions } from '@/lib/authOptions'
 import { createServerSupabase } from '@/lib/supabaseServer'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() { return new Resend(process.env.RESEND_API_KEY) }
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions) as any
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     const acceptUrl = `${appUrl}/api/coordination/switch/respond?id=${switchReq?.id}&action=accept&token=${switchReq?.id}`
     const declineUrl = `${appUrl}/api/coordination/switch/respond?id=${switchReq?.id}&action=decline&token=${switchReq?.id}`
 
-    await resend.emails.send({
+    await getResend().emails.send({
       from: process.env.FRAYDI_FROM_EMAIL ?? 'Fraydi <noreply@dayryz.com>',
       to: otherParent.email,
       subject: `Switch request: ${event?.title ?? 'an activity'}`,
