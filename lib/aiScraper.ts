@@ -1,6 +1,12 @@
 import OpenAI from 'openai'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+let _openai: OpenAI | null = null
+function getOpenAI() {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
+// Keep backward compat reference (lazily accessed)
+const openai = { chat: { completions: { create: (...args: Parameters<OpenAI['chat']['completions']['create']>) => getOpenAI().chat.completions.create(...args) } } } as unknown as OpenAI
 
 export type ScrapedEvent = {
   title: string
