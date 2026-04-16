@@ -7,7 +7,7 @@ import ShoppingList from '@/components/ShoppingList'
 
 type CalEvent = {
   id: string; title: string; start: string; end: string
-  isAllDay: boolean; calendarColor?: string
+  isAllDay: boolean; calendarColor?: string; calendarName?: string
 }
 
 function getDeviceTz() {
