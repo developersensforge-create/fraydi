@@ -33,6 +33,7 @@ export type UnifiedEvent = {
   calendarId: string;
   calendarName: string;
   calendarColor: string;
+  calendarOwner?: string | null;  // e.g. "Hayden", "Hunter", "Ruizhi" — set by user in calendar prefs
   source: "google" | "ical";
   htmlLink?: string;
 };
