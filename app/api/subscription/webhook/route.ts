@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabaseServer'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-03-25.dahlia',
-})
+function getStripe() { return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-03-25.dahlia' }) }
 
 // Next.js App Router reads body as text() — no config needed
 
@@ -19,7 +17,7 @@ export async function POST(request: NextRequest) {
     const body = await request.text()
 
     if (webhookSecret && sig && webhookSecret !== 'whsec_test_placeholder') {
-      event = stripe.webhooks.constructEvent(body, sig, webhookSecret)
+      event = getStripe().webhooks.constructEvent(body, sig, webhookSecret)
     } else {
       // No secret configured — parse directly (dev/test mode)
       event = JSON.parse(body) as Stripe.Event
@@ -48,7 +46,7 @@ export async function POST(request: NextRequest) {
         let currentPeriodEnd: string | undefined
         if (stripeSubId) {
           try {
-            const stripeSub = await stripe.subscriptions.retrieve(stripeSubId)
+            const stripeSub = await getStripe().subscriptions.retrieve(stripeSubId)
             currentPeriodEnd = new Date((stripeSub as any).current_period_end * 1000).toISOString()
           } catch {
             // Non-fatal

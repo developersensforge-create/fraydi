@@ -4,9 +4,7 @@ import { authOptions } from '@/lib/authOptions'
 import { createServerSupabase } from '@/lib/supabaseServer'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-03-25.dahlia',
-})
+function getStripe() { return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-03-25.dahlia' }) }
 
 const PRICE_IDS: Record<string, string> = {
   pro_monthly: process.env.STRIPE_PRICE_PRO_MONTHLY || 'price_placeholder_monthly',
@@ -86,7 +84,7 @@ export async function POST(request: NextRequest) {
     stripeCustomerId = sub?.stripe_customer_id || undefined
 
     if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({
+      const customer = await getStripe().customers.create({
         email: session.user.email,
         name: profile.full_name || session.user.name || undefined,
         metadata: { family_id: profile.family_id },
@@ -102,7 +100,7 @@ export async function POST(request: NextRequest) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://fraydi.vercel.app'
 
-    const checkoutSession = await stripe.checkout.sessions.create({
+    const checkoutSession = await getStripe().checkout.sessions.create({
       customer: stripeCustomerId,
       mode: 'subscription',
       line_items: [{ price: PRICE_IDS[plan], quantity: 1 }],

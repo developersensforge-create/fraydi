@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/authOptions'
 import { createServerSupabase } from '@/lib/supabaseServer'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+function getOpenAI() { return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) }
 
 interface CalEvent {
   id: string
@@ -39,7 +39,7 @@ async function generateResolution(event1: CalEvent, event2: CalEvent, type: stri
         ? `Two family members both have events at the same time: "${event1.title}" and "${event2.title}". Suggest a brief resolution (1-2 sentences) for who should handle coverage or how to coordinate.`
         : `Two calendar events overlap: "${event1.title}" and "${event2.title}". Suggest a brief resolution (1-2 sentences) to resolve this scheduling conflict.`
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {

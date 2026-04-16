@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/authOptions'
 import { createServerSupabase } from '@/lib/supabaseServer'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() { return new Resend(process.env.RESEND_API_KEY) }
 
 // POST /api/family/invite — send invite email
 // Body: { email: string }
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     const joinUrl = `${appUrl}/join/${invitation.token}`
 
     // Send invite email via Resend
-    const { error: emailError } = await resend.emails.send({
+    const { error: emailError } = await getResend().emails.send({
       from: process.env.FRAYDI_FROM_EMAIL ?? 'Fraydi <noreply@dayryz.com>',
       to: invitedEmail,
       subject: `${inviterName} invited you to join their family on Fraydi`,

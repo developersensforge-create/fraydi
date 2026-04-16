@@ -5,7 +5,7 @@ import { createServerSupabase } from '@/lib/supabaseServer'
 import { Resend } from 'resend'
 import crypto from 'crypto'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() { return new Resend(process.env.RESEND_API_KEY) }
 
 // POST /api/family/members/[id]/resend-invite
 // Creates a family_invitations row and emails the join link
@@ -71,7 +71,7 @@ export async function POST(
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://fraydi.vercel.app').replace(/\/$/, '')
     const joinUrl = `${appUrl}/join/${token}`
 
-    const { error: resendError } = await resend.emails.send({
+    const { error: resendError } = await getResend().emails.send({
       from: process.env.FRAYDI_FROM_EMAIL ?? 'Fraydi <noreply@dayryz.com>',
       to: member.email,
       subject: `${inviterName} invited you to coordinate on Fraydi`,
