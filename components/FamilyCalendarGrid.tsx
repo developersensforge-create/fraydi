@@ -796,18 +796,7 @@ export default function FamilyCalendarGrid({ date, myProfileId }: { date: string
               style={{ top: (h - START_HOUR) * HOUR_HEIGHT, zIndex: 1 }} />
           ))}
 
-          {/* Current time marker — only show when viewing today */}
-          {date === new Date().toLocaleDateString('en-CA', { timeZone: getDeviceTz() }) && (() => {
-            const nowMins = toMinutesFromMidnight(new Date().toISOString())
-            const nowTop = Math.max(0, (nowMins - START_HOUR * 60) / 60 * HOUR_HEIGHT)
-            return nowTop < GRID_HEIGHT ? (
-              <div className="absolute left-0 right-0 z-30 flex items-center pointer-events-none"
-                style={{ top: nowTop }}>
-                <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0 -ml-1" />
-                <div className="flex-1 border-t-2 border-red-400" />
-              </div>
-            ) : null
-          })()}
+          {/* Current time marker — rendered once via nowLinePx state below */}
 
           {/* My column */}
           <div className="relative flex-1">

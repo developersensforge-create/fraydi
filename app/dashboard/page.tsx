@@ -7,6 +7,8 @@ import Navbar from '@/components/Navbar'
 import EventCard, { FamilyEvent } from '@/components/EventCard'
 import CoordinationAlert from '@/components/CoordinationAlert'
 import WatchList from '@/components/WatchList'
+import ShoppingList from '@/components/ShoppingList'
+import FamilyNotesSummary from '@/components/FamilyNotesSummary'
 import FamilyCalendarGrid from '@/components/FamilyCalendarGrid'
 import WeekView from '@/components/WeekView'
 import MonthView from '@/components/MonthView'
@@ -275,7 +277,7 @@ export default function DashboardPage() {
                 ) : viewMode === 'Month' ? (
                   <MonthView currentDate={currentDate} onSelectDate={d => { setCurrentDate(d); setViewMode('Today') }} />
                 ) : (
-                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.8.4</div>
+                  <><div className="text-[10px] text-gray-400 text-right mb-1 font-mono">fraydi v1.8.5</div>
                   <FamilyCalendarGrid date={formatDate(currentDate)} myProfileId={myProfileId ?? 'loading'} /></>
                 )}
               </div>
@@ -290,6 +292,8 @@ export default function DashboardPage() {
           <aside className="lg:w-72 flex-shrink-0 flex flex-col gap-6">
             <CoordinationAlert date={formatDate(currentDate)} />
             <WatchList date={formatDate(currentDate)} />
+            <FamilyNotesSummary />
+            <ShoppingList />
           </aside>
         </div>
       </main>

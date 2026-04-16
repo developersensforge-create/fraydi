@@ -29,35 +29,47 @@ export default function KidDashboard() {
   const [weekEvents, setWeekEvents] = useState<CalEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [note, setNote] = useState('')
-  const [notes, setNotes] = useState<Array<{text: string; ts: number}>>([])
+  const [notes, setNotes] = useState<Array<{id: string; content: string; created_at: string; author_name: string}>>([])
+  const [familyId, setFamilyId] = useState<string | null>(null)
 
   const today = new Date()
   const tz = encodeURIComponent(getDeviceTz())
 
-  // Kid-relevant keywords for filtering
-  const kidKeywords = [
-    name.toLowerCase(),
-    'hunter', 'hayden', 'baseball', 'soccer', 'swim', 'fll', 'scioly', 'chess',
-    'kids', 'activit', '4v4', 'riverbat', '12u', '6u', 'practice', 'game', 'tournament', 'library',
-  ]
+  // Filter events by calendar owner name — use calendarName first (most reliable)
+  // Fall back to title keywords only for THIS kid's name, never other kids
+  const nameLower = name.toLowerCase()
   const isKidEvent = (e: CalEvent) => {
-    const t = e.title.toLowerCase()
-    return kidKeywords.some(k => t.includes(k) || (e.calendarColor === '#f59e0b')) // baseball color
+    // Primary: calendar name contains this kid's name
+    const calName = (e.calendarName ?? '').toLowerCase()
+    if (calName.includes(nameLower)) return true
+    // Secondary: event title contains this kid's name exactly
+    const titleLower = e.title.toLowerCase()
+    if (titleLower.includes(nameLower)) return true
+    // Tertiary: activity keywords — only if calendarName indicates a kid calendar (not adult)
+    const isAdultCal = calName.includes('work') || calName.includes('ruizhi') || calName.includes('liwei') || calName.includes('@')
+    if (isAdultCal) return false
+    const activityKeywords = ['baseball', 'soccer', 'swim', 'fll', 'scioly', 'chess', 'activit', '4v4', 'riverbat', '12u', '6u', 'library']
+    return activityKeywords.some(k => calName.includes(k) || titleLower.includes(k))
   }
 
-  // Load notes from localStorage
+  // Load family_id + notes from DB
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`fraydi_kid_notes_${name}`)
-      if (saved) setNotes(JSON.parse(saved))
-    } catch {}
+    fetch('/api/user/profile').then(r => r.json()).then(d => {
+      if (d.family_id) {
+        setFamilyId(d.family_id)
+        fetch(`/api/notes?family_id=${d.family_id}`).then(r => r.json()).then(nd => setNotes(nd.notes ?? []))
+      }
+    }).catch(() => {})
   }, [name])
 
-  const submitNote = () => {
-    if (!note.trim()) return
-    const updated = [{ text: note.trim(), ts: Date.now() }, ...notes].slice(0, 20)
-    setNotes(updated)
-    localStorage.setItem(`fraydi_kid_notes_${name}`, JSON.stringify(updated))
+  const submitNote = async () => {
+    if (!note.trim() || !familyId) return
+    const res = await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: note.trim(), author_name: name, note_type: 'message', family_id: familyId }),
+    }).then(r => r.json())
+    if (res.note) setNotes(prev => [res.note, ...prev])
     setNote('')
   }
 
@@ -169,11 +181,13 @@ export default function KidDashboard() {
             </button>
             {notes.length > 0 && (
               <div className="space-y-2 pt-1">
-                <p className="text-xs text-gray-400 font-medium">Recent notes</p>
-                {notes.slice(0, 5).map((n, i) => (
-                  <div key={i} className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                    <p>{n.text}</p>
-                    <p className="text-[10px] text-gray-400 mt-1">{new Date(n.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+                <p className="text-xs text-gray-400 font-medium">Sent</p>
+                {notes.slice(0, 5).map(n => (
+                  <div key={n.id} className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                    <p>{n.content}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      {new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </p>
                   </div>
                 ))}
               </div>
