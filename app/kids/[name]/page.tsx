@@ -28,6 +28,8 @@ export default function KidDashboard() {
   const [todayEvents, setTodayEvents] = useState<CalEvent[]>([])
   const [weekEvents, setWeekEvents] = useState<CalEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [note, setNote] = useState('')
+  const [notes, setNotes] = useState<Array<{text: string; ts: number}>>([])
 
   const today = new Date()
   const tz = encodeURIComponent(getDeviceTz())
@@ -41,6 +43,22 @@ export default function KidDashboard() {
   const isKidEvent = (e: CalEvent) => {
     const t = e.title.toLowerCase()
     return kidKeywords.some(k => t.includes(k) || (e.calendarColor === '#f59e0b')) // baseball color
+  }
+
+  // Load notes from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`fraydi_kid_notes_${name}`)
+      if (saved) setNotes(JSON.parse(saved))
+    } catch {}
+  }, [name])
+
+  const submitNote = () => {
+    if (!note.trim()) return
+    const updated = [{ text: note.trim(), ts: Date.now() }, ...notes].slice(0, 20)
+    setNotes(updated)
+    localStorage.setItem(`fraydi_kid_notes_${name}`, JSON.stringify(updated))
+    setNote('')
   }
 
   useEffect(() => {
@@ -108,6 +126,58 @@ export default function KidDashboard() {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+
+        {/* Getting there — who's driving */}
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-900">🚗 Getting there</h2>
+          </div>
+          <div className="px-4 py-3">
+            {todayEvents.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-3">No events today</p>
+            ) : (
+              <ul className="space-y-2">
+                {todayEvents.map(ev => (
+                  <li key={ev.id} className="flex items-center justify-between py-1">
+                    <span className="text-sm text-gray-700">{ev.title}</span>
+                    <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Driver TBD</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Notes to parents */}
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-900">📝 Leave a note for parents</h2>
+          </div>
+          <div className="px-4 py-3 space-y-3">
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Shopping list, message, reminder..."
+              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
+              rows={3}
+            />
+            <button onClick={submitNote}
+              className="w-full py-2 bg-[#f96400] text-white text-sm font-semibold rounded-xl hover:bg-[#d95400]">
+              Send to parents
+            </button>
+            {notes.length > 0 && (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs text-gray-400 font-medium">Recent notes</p>
+                {notes.slice(0, 5).map((n, i) => (
+                  <div key={i} className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                    <p>{n.text}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{new Date(n.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

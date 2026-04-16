@@ -59,10 +59,19 @@ export default function MonthView({ currentDate, onSelectDate }: { currentDate: 
 
   const today = formatDate(new Date())
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const totalEvents = Object.values(eventMap).reduce((s, evs) => s + evs.length, 0)
+  const daysWithEvents = Object.values(eventMap).filter(evs => evs.length > 0).length
 
   return (
     <div>
-      <p className="text-sm font-semibold text-gray-700 mb-3 text-center">{monthName}</p>
+      <div className="flex items-center justify-between mb-3 px-1">
+        <p className="text-sm font-semibold text-gray-700">{monthName}</p>
+        {!loading && totalEvents > 0 && (
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+            {totalEvents} events · {daysWithEvents} days busy
+          </span>
+        )}
+      </div>
       <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-xl overflow-hidden">
         {/* Day headers */}
         {DAY_LABELS.map(d => (
