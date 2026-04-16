@@ -195,12 +195,12 @@ export async function GET(req: NextRequest) {
 
     // Detect shared/duplicate events: if ALL busy adults have same title+time, they're attending together
     // (e.g. both Ruizhi and Liwei have "Riverbats game" — that's one shared event, not a conflict)
-    const isSharedEvent = busyAdults.length === totalAdults && totalAdults > 1 &&
+    const allSameEvent = busyAdults.length === totalAdults && totalAdults > 1 &&
       busyAdults.every(a => {
         const titleNorm = a.title.trim().toLowerCase().slice(0, 40)
         return busyAdults[0].title.trim().toLowerCase().slice(0, 40) === titleNorm
       })
-    if (isSharedEvent) continue // Both adults at same event — no coverage conflict
+    if (allSameEvent) continue // Both adults at same event — no coverage conflict
 
     // Find simultaneous kid events
     const simultaneousKids = kidEventWindows.filter((other, j) =>
